@@ -43,6 +43,19 @@ no network access, no account and no runtime dependencies.
 Run `rstrace` with no arguments to open the window, or use
 `rstrace --gui photo.jpg` to open straight onto a photo.
 
+**Linux: add it to your applications menu (and get the icon).** Wayland
+desktops only show an app's icon once it's installed with a desktop entry.
+After building, run:
+
+```sh
+./target/release/rstrace --install     # just for you, no sudo needed
+```
+
+This copies the program to `~/.local/bin`, adds the icon and an
+applications-menu entry, and lets you open images with rstrace from your file
+manager. `rstrace --uninstall` removes it again. Re-run `--install` after
+rebuilding to update the installed copy.
+
 1. **Open photo…** (or drag a photo onto the window).
 2. **1. Frame.** Check that the cyan quad sits on the *inside* edge of the
    frame. Drag the corners if needed; a magnifier appears while you drag. The
@@ -104,9 +117,7 @@ for Linux, Windows and macOS. Download them from the run's *Artifacts*:
 - **macOS:** `rstrace.app.zip`, an app bundle with its icon. It is unsigned,
   so after unzipping run `xattr -cr rstrace.app` once, or right-click it and
   choose *Open*.
-- **Linux:** the `rstrace` binary plus `rstrace.desktop` and `rstrace.png`
-  for menu integration. Copy them to `~/.local/bin`,
-  `~/.local/share/applications` and `~/.local/share/icons`.
+- **Linux:** the `rstrace` binary. Run `./rstrace --install` once (see below).
 
 The icon is drawn by `tools/make_icon.py` (Pillow), which writes
 `assets/icon*.png` and `assets/icon.ico`.

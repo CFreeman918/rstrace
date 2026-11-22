@@ -6,6 +6,6 @@ Comment=Trace photos taken in a Shaper Trace style frame to real-scale SVG or DX
 Exec=rstrace %f
 Icon=rstrace
 Terminal=false
-Categories=Graphics;VectorGraphics;Engineering;
+Categories=Graphics;2DGraphics;VectorGraphics;Engineering;
 MimeType=image/jpeg;image/png;image/webp;image/tiff;
 StartupWMClass=rstrace

@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 #[cfg(feature = "gui")]
 mod gui;
+mod install;
 
 /// Offline photo -> real-scale SVG tracer for Shaper Trace style frames.
 ///
@@ -97,6 +98,15 @@ struct Cli {
     /// Open the photo in the GUI instead of tracing from the command line.
     #[arg(long)]
     gui: bool,
+
+    /// Linux: install for this user (program in ~/.local/bin, applications
+    /// menu entry and icon), so the icon shows on Wayland desktops.
+    #[arg(long, conflicts_with = "uninstall")]
+    install: bool,
+
+    /// Linux: remove what --install added.
+    #[arg(long)]
+    uninstall: bool,
 
     /// Also write the rectified photo (PNG) to this path.
     #[arg(long)]
@@ -252,6 +262,18 @@ fn run_cli(cli: Cli, input: PathBuf) -> Result<(), String> {
 
 fn main() {
     let cli = Cli::parse();
+    if cli.install || cli.uninstall {
+        let res = if cli.install {
+            install::install()
+        } else {
+            install::uninstall()
+        };
+        if let Err(e) = res {
+            eprintln!("error: {e}");
+            std::process::exit(1);
+        }
+        return;
+    }
     #[cfg(feature = "gui")]
     if cli.gui || cli.input.is_none() {
         if let Err(e) = gui::run(cli.input.clone()) {
