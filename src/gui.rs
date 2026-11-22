@@ -298,12 +298,11 @@ impl App {
         }
     }
 
-    fn export(&mut self) {
+    fn export(&mut self, fmt: ExportFormat) {
         let (Some(r), Some(f), Some(photo)) = (&self.result, &self.result_frame, &self.photo)
         else {
             return;
         };
-        let fmt = self.settings.options.format;
         let stem = photo
             .path
             .file_stem()
@@ -362,17 +361,15 @@ impl App {
                 }
             }
             let can_export = self.result.is_some();
-            if ui
-                .add_enabled(
-                    can_export,
-                    egui::Button::new(format!(
-                        "Export {}…",
-                        self.settings.options.format.extension().to_uppercase()
-                    )),
-                )
-                .clicked()
-            {
-                self.export();
+            for fmt in [ExportFormat::Svg, ExportFormat::Dxf] {
+                let label = format!("Export {}…", fmt.extension().to_uppercase());
+                let hover = match fmt {
+                    ExportFormat::Svg => "Real-scale SVG (mm). Style is set under Export below.",
+                    ExportFormat::Dxf => "DXF R12 in mm: closed polylines, outer edges on layer OUTSIDE, holes on layer INSIDE.",
+                };
+                if ui.add_enabled(can_export, egui::Button::new(label)).on_hover_text(hover).clicked() {
+                    self.export(fmt);
+                }
             }
         });
         ui.separator();
@@ -456,13 +453,7 @@ impl App {
 
             ui.add_space(8.0);
             ui.heading("Export");
-            ui.horizontal(|ui| {
-                ui.selectable_value(&mut o.format, ExportFormat::Svg, "SVG");
-                ui.selectable_value(&mut o.format, ExportFormat::Dxf, "DXF")
-                    .on_hover_text("DXF R12 in mm: closed polylines, outer edges on layer OUTSIDE, holes on layer INSIDE.");
-            });
-            let is_svg = o.format == ExportFormat::Svg;
-            ui.add_enabled_ui(is_svg, |ui| {
+            ui.scope(|ui| {
             egui::ComboBox::from_label("SVG style")
                 .selected_text(match o.style {
                     SvgStyle::Shaper => "Shaper Origin (cut types)",
