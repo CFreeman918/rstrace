@@ -554,3 +554,47 @@ pub fn flatten(segs: &[Segment], steps: usize) -> Vec<Pt> {
     }
     out
 }
+
+/// Flatten segments into a polyline whose deviation from the curves is at
+/// most `tol` (adaptive subdivision). Starts at the first segment's start
+/// point; the closing point is not repeated.
+pub fn flatten_tol(segs: &[Segment], tol: f64) -> Vec<Pt> {
+    fn rec(b: &Cubic, tol: f64, depth: u32, out: &mut Vec<Pt>) {
+        // Flat enough when both control points are within tol of the chord.
+        let chord = sub(b[3], b[0]);
+        let l = len(chord);
+        let d = |p: Pt| {
+            if l < 1e-12 {
+                len(sub(p, b[0]))
+            } else {
+                ((p[0] - b[0][0]) * chord[1] - (p[1] - b[0][1]) * chord[0]).abs() / l
+            }
+        };
+        // 3/4 * max control distance bounds the curve's deviation.
+        if depth >= 16 || 0.75 * d(b[1]).max(d(b[2])) <= tol {
+            out.push(b[3]);
+            return;
+        }
+        // de Casteljau split at t = 0.5.
+        let m = |a: Pt, c: Pt| [(a[0] + c[0]) / 2.0, (a[1] + c[1]) / 2.0];
+        let (p01, p12, p23) = (m(b[0], b[1]), m(b[1], b[2]), m(b[2], b[3]));
+        let (p012, p123) = (m(p01, p12), m(p12, p23));
+        let mid = m(p012, p123);
+        rec(&[b[0], p01, p012, mid], tol, depth + 1, out);
+        rec(&[mid, p123, p23, b[3]], tol, depth + 1, out);
+    }
+    let mut out = Vec::new();
+    if let Some(first) = segs.first() {
+        out.push(first.pts[0]);
+    }
+    for s in segs {
+        match s.kind {
+            SegKind::Line => out.push(s.pts[3]),
+            SegKind::Cubic => rec(&s.pts, tol, 0, &mut out),
+        }
+    }
+    if out.len() > 1 {
+        out.pop(); // closing point == start
+    }
+    out
+}

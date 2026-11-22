@@ -6,7 +6,9 @@ use eframe::egui::{self, Color32, Pos2, Rect, Sense, Stroke, TextureHandle, Text
 use rstrace::core::geometry::Pt;
 use rstrace::core::pipeline::rectify_rgba;
 use rstrace::core::trace;
-use rstrace::{FrameGeom, LineMode, Options, Pipeline, SvgStyle, TraceResult, TRACE_CAPTURE_MM};
+use rstrace::{
+    ExportFormat, FrameGeom, LineMode, Options, Pipeline, SvgStyle, TraceResult, TRACE_CAPTURE_MM,
+};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -82,11 +84,26 @@ pub struct App {
     show_mask: bool,
 }
 
+/// Window / taskbar / dock icon, embedded in the binary.
+fn app_icon() -> egui::IconData {
+    let img = image::load_from_memory(include_bytes!("../assets/icon.png"))
+        .expect("embedded icon")
+        .into_rgba8();
+    let (width, height) = img.dimensions();
+    egui::IconData {
+        rgba: img.into_raw(),
+        width,
+        height,
+    }
+}
+
 pub fn run(initial: Option<PathBuf>) -> Result<(), String> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1280.0, 820.0])
-            .with_title("rstrace"),
+            .with_title("rstrace")
+            .with_app_id("rstrace")
+            .with_icon(app_icon()),
         ..Default::default()
     };
     eframe::run_native(
@@ -286,21 +303,35 @@ impl App {
         else {
             return;
         };
-        let excluded = r.excluded(&self.excluded_px(r));
-        let svg = r.to_svg(f, &self.settings.options, &excluded);
-        let name = photo
+        let fmt = self.settings.options.format;
+        let stem = photo
             .path
             .file_stem()
-            .map(|s| format!("{}.svg", s.to_string_lossy()))
-            .unwrap_or("trace.svg".into());
-        let mut dlg = rfd::FileDialog::new()
-            .add_filter("SVG", &["svg"])
-            .set_file_name(name);
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or("trace".into());
+        // Offer the chosen format first; the extension typed decides in the end.
+        let mut dlg = rfd::FileDialog::new().set_file_name(format!("{stem}.{}", fmt.extension()));
+        for f in [
+            fmt,
+            if fmt == ExportFormat::Svg {
+                ExportFormat::Dxf
+            } else {
+                ExportFormat::Svg
+            },
+        ] {
+            dlg = dlg.add_filter(f.extension().to_uppercase(), &[f.extension()]);
+        }
         if let Some(dir) = photo.path.parent() {
             dlg = dlg.set_directory(dir);
         }
-        if let Some(path) = dlg.save_file() {
-            self.status = match std::fs::write(&path, svg) {
+        if let Some(mut path) = dlg.save_file() {
+            let fmt = ExportFormat::from_path(&path).unwrap_or_else(|| {
+                path.set_extension(fmt.extension());
+                fmt
+            });
+            let excluded = r.excluded(&self.excluded_px(r));
+            let data = r.export(fmt, f, &self.settings.options, &excluded);
+            self.status = match std::fs::write(&path, data) {
                 Ok(()) => format!("Saved {}", path.display()),
                 Err(e) => format!("Couldn't save: {e}"),
             };
@@ -332,7 +363,13 @@ impl App {
             }
             let can_export = self.result.is_some();
             if ui
-                .add_enabled(can_export, egui::Button::new("Export SVG…"))
+                .add_enabled(
+                    can_export,
+                    egui::Button::new(format!(
+                        "Export {}…",
+                        self.settings.options.format.extension().to_uppercase()
+                    )),
+                )
                 .clicked()
             {
                 self.export();
@@ -419,7 +456,14 @@ impl App {
 
             ui.add_space(8.0);
             ui.heading("Export");
-            egui::ComboBox::from_label("style")
+            ui.horizontal(|ui| {
+                ui.selectable_value(&mut o.format, ExportFormat::Svg, "SVG");
+                ui.selectable_value(&mut o.format, ExportFormat::Dxf, "DXF")
+                    .on_hover_text("DXF R12 in mm: closed polylines, outer edges on layer OUTSIDE, holes on layer INSIDE.");
+            });
+            let is_svg = o.format == ExportFormat::Svg;
+            ui.add_enabled_ui(is_svg, |ui| {
+            egui::ComboBox::from_label("SVG style")
                 .selected_text(match o.style {
                     SvgStyle::Shaper => "Shaper Origin (cut types)",
                     SvgStyle::Filled => "Filled",
@@ -431,6 +475,7 @@ impl App {
                     ui.selectable_value(&mut o.style, SvgStyle::Filled, "Filled");
                     ui.selectable_value(&mut o.style, SvgStyle::Outline, "Outlines");
                 });
+            });
             ui.checkbox(&mut o.crop_to_content, "Crop to drawing");
             if o.crop_to_content {
                 ui.add(egui::Slider::new(&mut o.crop_margin_mm, 0.0..=20.0).text("margin mm"));

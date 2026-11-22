@@ -319,3 +319,113 @@ fn line_modes_convert_only_thin_closed_loops() {
     let r = (big.area / std::f64::consts::PI).sqrt();
     assert!((r - 50.0).abs() < 1.0, "centre radius {r}");
 }
+
+/// Minimal DXF reader for tests: (layer, closed, vertices) per POLYLINE.
+fn read_dxf_polylines(dxf: &str) -> Vec<(String, bool, Vec<Pt>)> {
+    let lines: Vec<&str> = dxf.lines().collect();
+    assert!(lines.len().is_multiple_of(2), "group code/value pairs");
+    let pairs: Vec<(i32, &str)> = lines
+        .chunks(2)
+        .map(|c| (c[0].trim().parse().unwrap(), c[1].trim()))
+        .collect();
+    let mut out: Vec<(String, bool, Vec<Pt>)> = Vec::new();
+    let mut i = 0;
+    while i < pairs.len() {
+        match pairs[i] {
+            (0, "POLYLINE") => out.push((String::new(), false, Vec::new())),
+            (0, "VERTEX") => out.last_mut().unwrap().2.push([f64::NAN, f64::NAN]),
+            (8, layer) if out.last().is_some_and(|p| p.2.is_empty()) => {
+                out.last_mut().unwrap().0 = layer.into()
+            }
+            (70, flags) if out.last().is_some_and(|p| p.2.is_empty()) => {
+                out.last_mut().unwrap().1 = flags == "1"
+            }
+            (10, x) => {
+                if let Some(v) = out.last_mut().and_then(|p| p.2.last_mut()) {
+                    v[0] = x.parse().unwrap()
+                }
+            }
+            (20, y) => {
+                if let Some(v) = out.last_mut().and_then(|p| p.2.last_mut()) {
+                    v[1] = y.parse().unwrap()
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    out
+}
+
+#[test]
+fn dxf_export_matches_svg_geometry() {
+    use rstrace::ExportFormat;
+    let photo = render(PW, PH, TRUE);
+    let mut pipe = Pipeline::new(photo, PW, PH);
+    let frame = FrameGeom::oriented(pipe.detect().unwrap().corners, FW, FH);
+    let o = Options::default();
+    let r = pipe.run(&frame, &o).unwrap();
+    let dxf = r.export(ExportFormat::Dxf, &frame, &o, &[]);
+    assert!(dxf.contains("AC1009") && dxf.contains("$INSUNITS") && dxf.trim_end().ends_with("EOF"));
+
+    let polys = read_dxf_polylines(&dxf);
+    assert_eq!(polys.len(), 5);
+    assert_eq!(
+        polys.iter().filter(|p| p.0 == "INSIDE").count(),
+        1,
+        "one hole"
+    );
+    assert!(polys.iter().all(|p| p.1
+        && p.2.len() >= 3
+        && p.2.iter().all(|v| v[0].is_finite() && v[1].is_finite())));
+
+    // Circle (centre 60,60 mm from top-left) lands at y = FH - 60 (DXF y is up).
+    let bb = |v: &[Pt]| {
+        let xs = v.iter().map(|p| p[0]);
+        let ys = v.iter().map(|p| p[1]);
+        (
+            xs.clone().fold(f64::MAX, f64::min),
+            xs.fold(f64::MIN, f64::max),
+            ys.clone().fold(f64::MAX, f64::min),
+            ys.fold(f64::MIN, f64::max),
+        )
+    };
+    let circle = polys
+        .iter()
+        .map(|p| bb(&p.2))
+        .find(|b| b.0 < 40.0 && b.2 > 70.0)
+        .expect("circle");
+    assert!(
+        ((circle.0 + circle.1) / 2.0 - 60.0).abs() < 0.6,
+        "circle x {circle:?}"
+    );
+    assert!(
+        ((circle.2 + circle.3) / 2.0 - (FH - 60.0)).abs() < 0.6,
+        "circle y flipped {circle:?}"
+    );
+    assert!(
+        (circle.1 - circle.0 - 60.0).abs() < 0.8,
+        "circle diameter {circle:?}"
+    );
+    // The hole (x 150..180, y 55..75 from the top) on layer INSIDE.
+    let hole = polys
+        .iter()
+        .find(|p| p.0 == "INSIDE")
+        .map(|p| bb(&p.2))
+        .unwrap();
+    assert!(
+        (hole.0 - 150.0).abs() < 0.6 && (hole.1 - 180.0).abs() < 0.6,
+        "hole x {hole:?}"
+    );
+    assert!(
+        (hole.2 - (FH - 75.0)).abs() < 0.6 && (hole.3 - (FH - 55.0)).abs() < 0.6,
+        "hole y {hole:?}"
+    );
+
+    // Removed shapes are left out of the DXF too.
+    let ex = r.excluded(&[[135.0 * r.px_per_mm, 45.0 * r.px_per_mm]]);
+    assert_eq!(
+        read_dxf_polylines(&r.export(ExportFormat::Dxf, &frame, &o, &ex)).len(),
+        3
+    );
+}

@@ -1,6 +1,7 @@
 //! Photo -> rectified image -> ink mask -> vector shapes, with per-stage
 //! caching so that changing a later setting only recomputes what depends on it.
 
+use super::dxf;
 use super::frame;
 use super::geometry::{self as g, Pt};
 use super::imgproc::{self as ip, Gray};
@@ -57,6 +58,7 @@ pub struct Options {
     /// Drop shapes smaller than this.
     pub min_area_mm2: f64,
     pub style: SvgStyle,
+    pub format: ExportFormat,
     /// Size the SVG to the traced shapes instead of the whole frame.
     pub crop_to_content: bool,
     pub crop_margin_mm: f64,
@@ -81,6 +83,7 @@ impl Default for Options {
             corner_angle: 60.0,
             min_area_mm2: 2.0,
             style: SvgStyle::Shaper,
+            format: ExportFormat::Svg,
             crop_to_content: false,
             crop_margin_mm: 0.0,
         }
@@ -180,8 +183,13 @@ impl TraceResult {
             .collect()
     }
 
-    /// SVG for all shapes not excluded.
-    pub fn to_svg(&self, frame: &FrameGeom, opts: &Options, excluded: &[bool]) -> String {
+    /// Shapes not excluded, plus the exported region [x, y, w, h] in mm.
+    fn export_shapes(
+        &self,
+        frame: &FrameGeom,
+        opts: &Options,
+        excluded: &[bool],
+    ) -> (Vec<SvgShape<'_>>, [f64; 4]) {
         let shapes: Vec<SvgShape> = self
             .shapes
             .iter()
@@ -213,7 +221,59 @@ impl TraceResult {
                 (b[3] - b[1]) * k + 2.0 * m,
             ];
         }
+        (shapes, view)
+    }
+
+    /// SVG for all shapes not excluded.
+    pub fn to_svg(&self, frame: &FrameGeom, opts: &Options, excluded: &[bool]) -> String {
+        let (shapes, view) = self.export_shapes(frame, opts, excluded);
         svg::build_svg(&shapes, self.px_per_mm, view, opts.style)
+    }
+
+    /// DXF (R12, mm) for all shapes not excluded. Curves become polylines
+    /// within 0.01 mm of the traced curves.
+    pub fn to_dxf(&self, frame: &FrameGeom, opts: &Options, excluded: &[bool]) -> String {
+        let (shapes, view) = self.export_shapes(frame, opts, excluded);
+        dxf::build_dxf(&shapes, self.px_per_mm, view, 0.01)
+    }
+
+    /// Export by format.
+    pub fn export(
+        &self,
+        format: ExportFormat,
+        frame: &FrameGeom,
+        opts: &Options,
+        excluded: &[bool],
+    ) -> String {
+        match format {
+            ExportFormat::Svg => self.to_svg(frame, opts, excluded),
+            ExportFormat::Dxf => self.to_dxf(frame, opts, excluded),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum, Default)]
+pub enum ExportFormat {
+    #[default]
+    Svg,
+    Dxf,
+}
+
+impl ExportFormat {
+    pub fn extension(self) -> &'static str {
+        match self {
+            ExportFormat::Svg => "svg",
+            ExportFormat::Dxf => "dxf",
+        }
+    }
+
+    /// Format implied by a file name's extension, if recognised.
+    pub fn from_path(p: &std::path::Path) -> Option<Self> {
+        match p.extension()?.to_str()?.to_ascii_lowercase().as_str() {
+            "svg" => Some(ExportFormat::Svg),
+            "dxf" => Some(ExportFormat::Dxf),
+            _ => None,
+        }
     }
 }
 
@@ -504,6 +564,7 @@ fn mask_relevant(o: &Options) -> Options {
         corner_angle: 0.0,
         min_area_mm2: 0.0,
         style: SvgStyle::Shaper,
+        format: ExportFormat::Svg,
         crop_to_content: false,
         crop_margin_mm: 0.0,
         ..o.clone()
@@ -513,6 +574,7 @@ fn mask_relevant(o: &Options) -> Options {
 fn trace_relevant(o: &Options) -> Options {
     Options {
         style: SvgStyle::Shaper,
+        format: ExportFormat::Svg,
         crop_to_content: false,
         crop_margin_mm: 0.0,
         ..o.clone()

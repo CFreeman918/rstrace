@@ -16,7 +16,8 @@ struct Cli {
     /// Photo of a drawing inside the frame. Omit to start the GUI.
     input: Option<PathBuf>,
 
-    /// Output SVG path (default: input name with .svg).
+    /// Output path. A .dxf extension writes DXF (default: input name with
+    /// the --format extension).
     #[arg(short, long)]
     output: Option<PathBuf>,
 
@@ -80,6 +81,10 @@ struct Cli {
     /// How closed pen outlines become paths.
     #[arg(long, value_enum)]
     lines: Option<rstrace::LineMode>,
+
+    /// Output format when not implied by the --output extension.
+    #[arg(long, value_enum)]
+    format: Option<rstrace::ExportFormat>,
 
     /// SVG style.
     #[arg(long, value_enum)]
@@ -222,12 +227,18 @@ fn run_cli(cli: Cli, input: PathBuf) -> Result<(), String> {
         )
         .map_err(|e| e.to_string())?;
     }
-    let svg = result.to_svg(&frame, &o, &[]);
+    let format = cli
+        .output
+        .as_deref()
+        .and_then(rstrace::ExportFormat::from_path)
+        .or(cli.format)
+        .unwrap_or_default();
+    let data = result.export(format, &frame, &o, &[]);
     let out = cli
         .output
         .clone()
-        .unwrap_or_else(|| input.with_extension("svg"));
-    std::fs::write(&out, svg).map_err(|e| format!("Cannot write {}: {e}", out.display()))?;
+        .unwrap_or_else(|| input.with_extension(format.extension()));
+    std::fs::write(&out, data).map_err(|e| format!("Cannot write {}: {e}", out.display()))?;
     eprintln!(
         "Wrote {} ({} shapes, {:.1} x {:.1} mm, threshold {:.0})",
         out.display(),

@@ -103,6 +103,28 @@ fn real_trace_photo_ruler_150mm() {
         );
     }
 
+    // DXF of the default trace: one closed polyline, ~150 mm long.
+    let o = Options::default();
+    let r = pipe.run(&frame, &o).unwrap();
+    let dxf = r.export(rstrace::ExportFormat::Dxf, &frame, &o, &[]);
+    assert_eq!(dxf.matches("\nPOLYLINE\n").count(), 1);
+    let entities = &dxf[dxf.find("ENTITIES").expect("ENTITIES section") + 8..];
+    let ys: Vec<f64> = entities
+        .trim_start_matches('\n')
+        .lines()
+        .collect::<Vec<_>>()
+        .chunks(2)
+        .filter(|c| c[0].trim() == "20")
+        .map(|c| c[1].trim().parse().unwrap())
+        .filter(|&y: &f64| y != 0.0)
+        .collect();
+    let span =
+        ys.iter().cloned().fold(f64::MIN, f64::max) - ys.iter().cloned().fold(f64::MAX, f64::min);
+    assert!(
+        (150.0..151.3).contains(&span),
+        "DXF vertical extent {span:.2} mm"
+    );
+
     // Ink mode traces both edges of the pen line: outer path + hole.
     let o = Options {
         line_mode: LineMode::Ink,

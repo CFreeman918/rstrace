@@ -1,3 +1,4 @@
+pub mod dxf;
 pub mod frame;
 pub mod geometry;
 pub mod imgproc;

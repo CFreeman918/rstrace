@@ -33,6 +33,11 @@ no network access, no account and no runtime dependencies.
    (exterior cut) and holes get a white fill with a black stroke (interior
    cut). Plain filled and outline-only styles are also available.
 
+   **DXF** export (R12, the most widely readable flavour) is also available.
+   It is in millimetres, with each shape as a closed polyline within 0.01 mm
+   of the traced curve. Outer boundaries go on layer `OUTSIDE` and holes on
+   layer `INSIDE`, ready for CAD, CAM, laser or CNC software.
+
 ## Using the app
 
 Run `rstrace` with no arguments to open the window, or use
@@ -45,7 +50,7 @@ Run `rstrace` with no arguments to open the window, or use
 3. **2. Trace.** Adjust the settings. Click a shape to remove it from the
    export (for example a smudge or a shadow) and click it again to bring it
    back. Turn on **Threshold mask** to see exactly which pixels count as ink.
-4. **Export SVG…**
+4. Choose **SVG** or **DXF** under *Export*, then **Export…**
 
 Settings (frame size, thresholds, etc.) are remembered between runs.
 
@@ -53,6 +58,8 @@ Settings (frame size, thresholds, etc.) are remembered between runs.
 
 ```sh
 rstrace photo.jpg                      # auto-detect, writes photo.svg
+rstrace photo.jpg -o part.dxf          # DXF (format follows the extension)
+rstrace photo.jpg --format dxf         # writes photo.dxf
 rstrace photo.jpg -o part.svg --crop   # crop the SVG to the drawing
 rstrace photo.jpg --frame 263x173 --smoothing 0.4 --style outline
 rstrace photo.jpg --lines inside       # path on the inside of a drawn outline
@@ -91,8 +98,18 @@ cargo build --release --no-default-features   # CLI only, no GUI
   OpenGL, `libxkbcommon`), which any desktop install already has.
 
 On every push, CI (`.github/workflows/build.yml`) tests the project and builds
-binaries for Linux, Windows and macOS. Download them from the run's
-*Artifacts*.
+for Linux, Windows and macOS. Download them from the run's *Artifacts*:
+
+- **Windows:** `rstrace.exe`, with the app icon embedded.
+- **macOS:** `rstrace.app.zip`, an app bundle with its icon. It is unsigned,
+  so after unzipping run `xattr -cr rstrace.app` once, or right-click it and
+  choose *Open*.
+- **Linux:** the `rstrace` binary plus `rstrace.desktop` and `rstrace.png`
+  for menu integration. Copy them to `~/.local/bin`,
+  `~/.local/share/applications` and `~/.local/share/icons`.
+
+The icon is drawn by `tools/make_icon.py` (Pillow), which writes
+`assets/icon*.png` and `assets/icon.ico`.
 
 To try it without a frame, `cargo test --release -- --ignored write_sample_photo`
 writes a synthetic photo to `target/sample_photo.png`.
@@ -105,6 +122,7 @@ src/core/geometry.rs  homography, warping, line fitting, hulls
 src/core/imgproc.rs   grayscale, lighting flattening, Otsu, labelling, morphology
 src/core/trace.rs     contour following, corner detection, Bézier fitting
 src/core/svg.rs       SVG writer (Shaper / filled / outline styles)
+src/core/dxf.rs       DXF R12 writer (closed polylines, OUTSIDE/INSIDE layers)
 src/core/pipeline.rs  stage-cached pipeline + shape selection
 src/gui.rs            egui desktop app
 src/main.rs           CLI + GUI entry point
