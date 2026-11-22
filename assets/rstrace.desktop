@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=rstrace
+GenericName=Photo to vector tracer
+Comment=Trace photos taken in a Shaper Trace style frame to real-scale SVG or DXF
+Exec=rstrace %f
+Icon=rstrace
+Terminal=false
+Categories=Graphics;VectorGraphics;Engineering;
+MimeType=image/jpeg;image/png;image/webp;image/tiff;
+StartupWMClass=rstrace

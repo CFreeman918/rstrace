@@ -1,0 +1,62 @@
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact: rstrace-linux-x86_64
+          - os: windows-latest
+            artifact: rstrace-windows-x86_64
+          - os: macos-latest
+            artifact: rstrace-macos-arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Test
+        run: cargo test --release
+      - name: Build
+        run: cargo build --release
+
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p dist
+          cp target/release/rstrace assets/rstrace.desktop dist/
+          cp assets/icon.png dist/rstrace.png
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp target/release/rstrace.exe dist/
+      - name: Package (macOS app bundle)
+        if: runner.os == 'macOS'
+        run: |
+          APP=dist/rstrace.app
+          mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+          cp target/release/rstrace "$APP/Contents/MacOS/"
+          cp assets/Info.plist "$APP/Contents/"
+          ICONSET=$(mktemp -d)/rstrace.iconset
+          mkdir -p "$ICONSET"
+          for s in 16 32 128 256 512; do
+            sips -z $s $s assets/icon-512.png --out "$ICONSET/icon_${s}x${s}.png" >/dev/null
+            d=$((s*2)); [ $d -le 512 ] && sips -z $d $d assets/icon-512.png --out "$ICONSET/icon_${s}x${s}@2x.png" >/dev/null
+          done
+          iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/rstrace.icns"
+          # Zip with ditto so the bundle survives the artifact download intact.
+          (cd dist && ditto -c -k --keepParent rstrace.app rstrace.app.zip && rm -rf rstrace.app)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/
