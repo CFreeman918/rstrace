@@ -63,7 +63,9 @@ fn coarse_detect(small: &Gray) -> Option<([Pt; 4], f64)> {
             pts.extend_from_slice(&[[x0, y], [x1, y], [x0, y + 1.0], [x1, y + 1.0]]);
         }
         let hull = g::convex_hull(&pts);
-        let Some(quad) = g::max_area_quad(&hull) else { continue };
+        let Some(quad) = g::max_area_quad(&hull) else {
+            continue;
+        };
         let qa = g::polygon_area(&quad).abs();
         let ha = g::polygon_area(&hull).abs();
         let fill = area as f64 / ha;
@@ -108,7 +110,13 @@ fn refine_side(img: &Gray, a: Pt, b: Pt, inward: Pt, search: f64) -> Option<Line
             }
             prof.push(v / 3.0);
         }
-        let grad = |i: usize| if i >= 1 && i + 1 < prof.len() { prof[i + 1] - prof[i - 1] } else { 0.0 };
+        let grad = |i: usize| {
+            if i >= 1 && i + 1 < prof.len() {
+                prof[i + 1] - prof[i - 1]
+            } else {
+                0.0
+            }
+        };
         let (mut bi, mut bg) = (0usize, 0.0);
         for i in 1..prof.len() - 1 {
             let gv = grad(i);
@@ -122,7 +130,11 @@ fn refine_side(img: &Gray, a: Pt, b: Pt, inward: Pt, search: f64) -> Option<Line
         }
         let (gm, gp) = (grad(bi - 1), grad(bi + 1));
         let denom = gm - 2.0 * bg + gp;
-        let mut off = if denom < 0.0 { 0.5 * (gm - gp) / denom } else { 0.0 };
+        let mut off = if denom < 0.0 {
+            0.5 * (gm - gp) / denom
+        } else {
+            0.0
+        };
         if !off.is_finite() || off.abs() > 1.0 {
             off = 0.0;
         }
@@ -138,7 +150,12 @@ fn refine_side(img: &Gray, a: Pt, b: Pt, inward: Pt, search: f64) -> Option<Line
         let mut sorted = ds.clone();
         sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
         let tol = (sorted[sorted.len() * 6 / 10] * 2.5).max(1.0);
-        let keep: Vec<Pt> = pts.iter().zip(&ds).filter(|(_, &d)| d <= tol).map(|(p, _)| *p).collect();
+        let keep: Vec<Pt> = pts
+            .iter()
+            .zip(&ds)
+            .filter(|(_, &d)| d <= tol)
+            .map(|(p, _)| *p)
+            .collect();
         if keep.len() < 8 {
             break;
         }
@@ -165,12 +182,21 @@ pub fn detect_frame(gray: &Gray) -> Option<Detection> {
         .collect();
     if lines.iter().all(Option::is_some) {
         let l: Vec<Line> = lines.into_iter().flatten().collect();
-        let refined: Vec<Option<Pt>> = (0..4).map(|i| g::intersect(&l[(i + 3) % 4], &l[i])).collect();
-        if refined.iter().enumerate().all(|(i, p)| p.is_some_and(|p| g::dist(p, quad[i]) < search * 2.0)) {
+        let refined: Vec<Option<Pt>> = (0..4)
+            .map(|i| g::intersect(&l[(i + 3) % 4], &l[i]))
+            .collect();
+        if refined
+            .iter()
+            .enumerate()
+            .all(|(i, p)| p.is_some_and(|p| g::dist(p, quad[i]) < search * 2.0))
+        {
             for i in 0..4 {
                 quad[i] = refined[i].unwrap();
             }
         }
     }
-    Some(Detection { corners: quad, confidence: score })
+    Some(Detection {
+        corners: quad,
+        confidence: score,
+    })
 }

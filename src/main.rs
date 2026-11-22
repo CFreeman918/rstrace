@@ -103,7 +103,9 @@ struct Cli {
 }
 
 fn parse_pair(s: &str) -> Result<(f64, f64), String> {
-    let (a, b) = s.split_once(['x', 'X', ',']).ok_or("expected LONGxSHORT, e.g. 263x173")?;
+    let (a, b) = s
+        .split_once(['x', 'X', ','])
+        .ok_or("expected LONGxSHORT, e.g. 263x173")?;
     let a: f64 = a.trim().parse().map_err(|_| "bad number in --frame")?;
     let b: f64 = b.trim().parse().map_err(|_| "bad number in --frame")?;
     if a <= 0.0 || b <= 0.0 {
@@ -118,17 +120,27 @@ fn run_cli(cli: Cli, input: PathBuf) -> Result<(), String> {
     let (long, short) = parse_pair(&cli.frame)?;
     let corners = match &cli.corners {
         Some(s) => {
-            let v: Vec<f64> = s.split(',').map(|t| t.trim().parse::<f64>()).collect::<Result<_, _>>().map_err(|_| "bad --corners")?;
+            let v: Vec<f64> = s
+                .split(',')
+                .map(|t| t.trim().parse::<f64>())
+                .collect::<Result<_, _>>()
+                .map_err(|_| "bad --corners")?;
             if v.len() != 8 {
                 return Err("--corners needs 8 numbers".into());
             }
             [[v[0], v[1]], [v[2], v[3]], [v[4], v[5]], [v[6], v[7]]]
         }
         None => {
-            let d = pipe.detect().ok_or("Could not find the frame opening. Pass --corners, or use the GUI to place them.")?;
+            let d = pipe.detect().ok_or(
+                "Could not find the frame opening. Pass --corners, or use the GUI to place them.",
+            )?;
             eprintln!(
                 "Frame corners: {}",
-                d.corners.iter().map(|p| format!("{:.1},{:.1}", p[0], p[1])).collect::<Vec<_>>().join(",")
+                d.corners
+                    .iter()
+                    .map(|p| format!("{:.1},{:.1}", p[0], p[1]))
+                    .collect::<Vec<_>>()
+                    .join(",")
             );
             d.corners
         }
@@ -145,31 +157,76 @@ fn run_cli(cli: Cli, input: PathBuf) -> Result<(), String> {
     }
     o.invert = cli.invert;
     o.flatten = !cli.no_flatten;
-    if let Some(v) = cli.smoothing { o.smoothing_mm = v; }
-    if let Some(v) = cli.tolerance { o.tolerance_mm = v; }
-    if let Some(v) = cli.corner_angle { o.corner_angle = v; }
-    if let Some(v) = cli.despeckle { o.despeckle_mm2 = v; }
-    if let Some(v) = cli.inset { o.inset_mm = v; }
-    if let Some(v) = cli.resolution { o.px_per_mm = v; }
-    if let Some(v) = cli.style { o.style = v; }
-    if let Some(v) = cli.lines { o.line_mode = v; }
-    if let Some(v) = cli.close_gaps { o.close_gaps_mm = v; }
+    if let Some(v) = cli.smoothing {
+        o.smoothing_mm = v;
+    }
+    if let Some(v) = cli.tolerance {
+        o.tolerance_mm = v;
+    }
+    if let Some(v) = cli.corner_angle {
+        o.corner_angle = v;
+    }
+    if let Some(v) = cli.despeckle {
+        o.despeckle_mm2 = v;
+    }
+    if let Some(v) = cli.inset {
+        o.inset_mm = v;
+    }
+    if let Some(v) = cli.resolution {
+        o.px_per_mm = v;
+    }
+    if let Some(v) = cli.style {
+        o.style = v;
+    }
+    if let Some(v) = cli.lines {
+        o.line_mode = v;
+    }
+    if let Some(v) = cli.close_gaps {
+        o.close_gaps_mm = v;
+    }
     o.catch_faint = !cli.no_faint;
     o.crop_to_content = cli.crop;
 
     if let Some(p) = &cli.debug_rectified {
-        let (w, h, data) = rstrace::core::pipeline::rectify_rgba(&pipe.rgba, pipe.width, pipe.height, &frame, o.px_per_mm)
-            .ok_or("degenerate corners")?;
-        image::save_buffer(p, &data, w as u32, h as u32, image::ExtendedColorType::Rgba8).map_err(|e| e.to_string())?;
+        let (w, h, data) = rstrace::core::pipeline::rectify_rgba(
+            &pipe.rgba,
+            pipe.width,
+            pipe.height,
+            &frame,
+            o.px_per_mm,
+        )
+        .ok_or("degenerate corners")?;
+        image::save_buffer(
+            p,
+            &data,
+            w as u32,
+            h as u32,
+            image::ExtendedColorType::Rgba8,
+        )
+        .map_err(|e| e.to_string())?;
     }
 
     let result = pipe.run(&frame, &o).ok_or("degenerate corners")?;
     if let Some(p) = &cli.debug_mask {
-        let px: Vec<u8> = result.mask.iter().map(|&m| if m == 1 { 0 } else { 255 }).collect();
-        image::save_buffer(p, &px, result.width as u32, result.height as u32, image::ExtendedColorType::L8).map_err(|e| e.to_string())?;
+        let px: Vec<u8> = result
+            .mask
+            .iter()
+            .map(|&m| if m == 1 { 0 } else { 255 })
+            .collect();
+        image::save_buffer(
+            p,
+            &px,
+            result.width as u32,
+            result.height as u32,
+            image::ExtendedColorType::L8,
+        )
+        .map_err(|e| e.to_string())?;
     }
     let svg = result.to_svg(&frame, &o, &[]);
-    let out = cli.output.clone().unwrap_or_else(|| input.with_extension("svg"));
+    let out = cli
+        .output
+        .clone()
+        .unwrap_or_else(|| input.with_extension("svg"));
     std::fs::write(&out, svg).map_err(|e| format!("Cannot write {}: {e}", out.display()))?;
     eprintln!(
         "Wrote {} ({} shapes, {:.1} x {:.1} mm, threshold {:.0})",

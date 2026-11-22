@@ -52,7 +52,10 @@ pub fn homography(src: &[Pt; 4], dst: &[Pt; 4]) -> Option<Homography> {
 #[inline]
 pub fn apply(h: &Homography, x: f64, y: f64) -> Pt {
     let d = h[6] * x + h[7] * y + h[8];
-    [(h[0] * x + h[1] * y + h[2]) / d, (h[3] * x + h[4] * y + h[5]) / d]
+    [
+        (h[0] * x + h[1] * y + h[2]) / d,
+        (h[3] * x + h[4] * y + h[5]) / d,
+    ]
 }
 
 /// Generic warp: `hinv` maps destination (pixel-corner coords) to source.
@@ -103,17 +106,42 @@ fn warp_generic<F: Fn(usize) -> f32>(
 
 pub fn warp_gray(src: &Gray, hinv: &Homography, dw: usize, dh: usize) -> Gray {
     let mut out = Gray::new(dw, dh);
-    warp_generic(|i| src.data[i], src.width, src.height, 1, hinv, dw, dh, |i, v| out.data[i] = v[0]);
+    warp_generic(
+        |i| src.data[i],
+        src.width,
+        src.height,
+        1,
+        hinv,
+        dw,
+        dh,
+        |i, v| out.data[i] = v[0],
+    );
     out
 }
 
-pub fn warp_rgba(src: &[u8], sw: usize, sh: usize, hinv: &Homography, dw: usize, dh: usize) -> Vec<u8> {
+pub fn warp_rgba(
+    src: &[u8],
+    sw: usize,
+    sh: usize,
+    hinv: &Homography,
+    dw: usize,
+    dh: usize,
+) -> Vec<u8> {
     let mut out = vec![0u8; dw * dh * 4];
-    warp_generic(|i| src[i] as f32, sw, sh, 4, hinv, dw, dh, |i, v| {
-        for c in 0..4 {
-            out[i * 4 + c] = v[c].round().clamp(0.0, 255.0) as u8;
-        }
-    });
+    warp_generic(
+        |i| src[i] as f32,
+        sw,
+        sh,
+        4,
+        hinv,
+        dw,
+        dh,
+        |i, v| {
+            for c in 0..4 {
+                out[i * 4 + c] = v[c].round().clamp(0.0, 255.0) as u8;
+            }
+        },
+    );
     out
 }
 
@@ -137,7 +165,10 @@ pub fn fit_line(points: &[Pt]) -> Line {
         syy += dy * dy;
     }
     let theta = 0.5 * (2.0 * sxy).atan2(sxx - syy);
-    Line { p: [mx, my], d: [theta.cos(), theta.sin()] }
+    Line {
+        p: [mx, my],
+        d: [theta.cos(), theta.sin()],
+    }
 }
 
 pub fn line_dist(l: &Line, p: Pt) -> f64 {
@@ -279,8 +310,19 @@ pub fn order_corners(pts: &[Pt; 4]) -> [Pt; 4] {
         let bb = (b[1] - cy).atan2(b[0] - cx);
         aa.partial_cmp(&bb).unwrap()
     });
-    let start = (0..4).min_by(|&i, &j| (s[i][0] + s[i][1]).partial_cmp(&(s[j][0] + s[j][1])).unwrap()).unwrap();
-    [s[start], s[(start + 1) % 4], s[(start + 2) % 4], s[(start + 3) % 4]]
+    let start = (0..4)
+        .min_by(|&i, &j| {
+            (s[i][0] + s[i][1])
+                .partial_cmp(&(s[j][0] + s[j][1]))
+                .unwrap()
+        })
+        .unwrap();
+    [
+        s[start],
+        s[(start + 1) % 4],
+        s[(start + 2) % 4],
+        s[(start + 3) % 4],
+    ]
 }
 
 pub fn dist(a: Pt, b: Pt) -> f64 {

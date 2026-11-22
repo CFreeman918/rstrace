@@ -104,13 +104,21 @@ impl FrameGeom {
         let vert = g::dist(corners[1], corners[2]) + g::dist(corners[0], corners[3]);
         let (l, s) = (long_mm.max(short_mm), long_mm.min(short_mm));
         let (width_mm, height_mm) = if horiz >= vert { (l, s) } else { (s, l) };
-        FrameGeom { corners, width_mm, height_mm }
+        FrameGeom {
+            corners,
+            width_mm,
+            height_mm,
+        }
     }
 
     /// Rotate the output by 90° clockwise.
     pub fn rotated(&self) -> Self {
         let c = self.corners;
-        FrameGeom { corners: [c[3], c[0], c[1], c[2]], width_mm: self.height_mm, height_mm: self.width_mm }
+        FrameGeom {
+            corners: [c[3], c[0], c[1], c[2]],
+            width_mm: self.height_mm,
+            height_mm: self.width_mm,
+        }
     }
 }
 
@@ -139,7 +147,10 @@ impl TraceResult {
             .enumerate()
             .filter(|(_, s)| {
                 let b = s.contour.bbox;
-                p[0] >= b[0] as f64 && p[1] >= b[1] as f64 && p[0] <= b[2] as f64 && p[1] <= b[3] as f64
+                p[0] >= b[0] as f64
+                    && p[1] >= b[1] as f64
+                    && p[0] <= b[2] as f64
+                    && p[1] <= b[3] as f64
                     && trace::point_in_polygon(p, &s.contour.points)
             })
             .min_by(|a, b| a.1.contour.area.partial_cmp(&b.1.contour.area).unwrap())
@@ -176,7 +187,11 @@ impl TraceResult {
             .iter()
             .enumerate()
             .filter(|(i, _)| !excluded.get(*i).copied().unwrap_or(false))
-            .map(|(_, s)| SvgShape { segs: &s.segs, hole: s.contour.hole, depth: s.contour.depth })
+            .map(|(_, s)| SvgShape {
+                segs: &s.segs,
+                hole: s.contour.hole,
+                depth: s.contour.depth,
+            })
             .collect();
         let mut view = [0.0, 0.0, frame.width_mm, frame.height_mm];
         if opts.crop_to_content && !shapes.is_empty() {
@@ -191,7 +206,12 @@ impl TraceResult {
             }
             let m = opts.crop_margin_mm;
             let k = 1.0 / self.px_per_mm;
-            view = [b[0] * k - m, b[1] * k - m, (b[2] - b[0]) * k + 2.0 * m, (b[3] - b[1]) * k + 2.0 * m];
+            view = [
+                b[0] * k - m,
+                b[1] * k - m,
+                (b[2] - b[0]) * k + 2.0 * m,
+                (b[3] - b[1]) * k + 2.0 * m,
+            ];
         }
         svg::build_svg(&shapes, self.px_per_mm, view, opts.style)
     }
@@ -203,14 +223,23 @@ pub fn rectify_gray(gray: &Gray, f: &FrameGeom, px_per_mm: f64) -> Option<Gray> 
     Some(g::warp_gray(gray, &hinv, w, h))
 }
 
-pub fn rectify_rgba(rgba: &[u8], sw: usize, sh: usize, f: &FrameGeom, px_per_mm: f64) -> Option<(usize, usize, Vec<u8>)> {
+pub fn rectify_rgba(
+    rgba: &[u8],
+    sw: usize,
+    sh: usize,
+    f: &FrameGeom,
+    px_per_mm: f64,
+) -> Option<(usize, usize, Vec<u8>)> {
     let (w, h) = out_size(f, px_per_mm);
     let hinv = g::homography(&dst_rect(w, h), &f.corners)?;
     Some((w, h, g::warp_rgba(rgba, sw, sh, &hinv, w, h)))
 }
 
 fn out_size(f: &FrameGeom, ppm: f64) -> (usize, usize) {
-    (((f.width_mm * ppm).round() as usize).max(1), ((f.height_mm * ppm).round() as usize).max(1))
+    (
+        ((f.width_mm * ppm).round() as usize).max(1),
+        ((f.height_mm * ppm).round() as usize).max(1),
+    )
 }
 
 fn dst_rect(w: usize, h: usize) -> [Pt; 4] {
@@ -253,7 +282,10 @@ pub fn make_mask(gray: &Gray, o: &Options) -> (Vec<u8>, f32) {
     ip::clear_border(&mut mask, w, h, (o.inset_mm * ppm).round() as usize);
     let mask = ip::close(&mask, w, h, (o.close_gaps_mm * ppm / 2.0).round() as usize);
     let mask = ip::despeckle(&mask, w, h, (o.despeckle_mm2 * ppm * ppm) as usize);
-    (apply_line_mode(&mask, w, h, o.line_mode, o.max_line_width_mm * ppm), t)
+    (
+        apply_line_mode(&mask, w, h, o.line_mode, o.max_line_width_mm * ppm),
+        t,
+    )
 }
 
 /// Weak threshold for hysteresis: just outside the paper's noise band.
@@ -289,7 +321,13 @@ fn faint_threshold(img: &Gray, t: f32, invert: bool) -> f32 {
 /// Only thin ink loops (estimated stroke width < `max_width_px`) are
 /// converted; filled shapes and open strokes are left as drawn. Regions are
 /// filled by nesting parity, so a washer drawn as two circles keeps its hole.
-pub fn apply_line_mode(mask: &[u8], w: usize, h: usize, mode: LineMode, max_width_px: f64) -> Vec<u8> {
+pub fn apply_line_mode(
+    mask: &[u8],
+    w: usize,
+    h: usize,
+    mode: LineMode,
+    max_width_px: f64,
+) -> Vec<u8> {
     if mode == LineMode::Ink {
         return mask.to_vec();
     }
@@ -310,7 +348,12 @@ pub fn apply_line_mode(mask: &[u8], w: usize, h: usize, mode: LineMode, max_widt
             }
             let c = ink.labels[i] as usize;
             let mut edge = false;
-            for (nx, ny) in [(x.wrapping_sub(1), y), (x + 1, y), (x, y.wrapping_sub(1)), (x, y + 1)] {
+            for (nx, ny) in [
+                (x.wrapping_sub(1), y),
+                (x + 1, y),
+                (x, y.wrapping_sub(1)),
+                (x, y + 1),
+            ] {
                 if nx >= w || ny >= h {
                     edge = true;
                     continue;
@@ -326,7 +369,9 @@ pub fn apply_line_mode(mask: &[u8], w: usize, h: usize, mode: LineMode, max_widt
             }
         }
     }
-    let thin: Vec<bool> = (0..ni).map(|c| 2.0 * ink.areas[c] as f64 / boundary[c].max(1) as f64 <= max_width_px).collect();
+    let thin: Vec<bool> = (0..ni)
+        .map(|c| 2.0 * ink.areas[c] as f64 / boundary[c].max(1) as f64 <= max_width_px)
+        .collect();
     let mut ink_nb: Vec<Vec<usize>> = vec![Vec::new(); ni];
     let mut bg_nb: Vec<Vec<usize>> = vec![Vec::new(); nb];
     for &(c, r) in &adj {
@@ -366,19 +411,33 @@ pub fn apply_line_mode(mask: &[u8], w: usize, h: usize, mode: LineMode, max_widt
         .map(|r| {
             let l = bg_level[r];
             l != usize::MAX && l % 4 == 2 && {
-                let enclosing: Vec<usize> = bg_nb[r].iter().copied().filter(|&c| ink_level[c] + 1 == l).collect();
+                let enclosing: Vec<usize> = bg_nb[r]
+                    .iter()
+                    .copied()
+                    .filter(|&c| ink_level[c] + 1 == l)
+                    .collect();
                 !enclosing.is_empty() && enclosing.iter().all(|&c| thin[c])
             }
         })
         .collect();
-    let is_loop: Vec<bool> = (0..ni).map(|c| thin[c] && ink_nb[c].iter().any(|&r| fill[r])).collect();
-    let f_px: Vec<bool> = (0..mask.len()).map(|i| mask[i] == 0 && fill[bg.labels[i] as usize]).collect();
-    let loop_px: Vec<bool> = (0..mask.len()).map(|i| mask[i] == 1 && is_loop[ink.labels[i] as usize]).collect();
+    let is_loop: Vec<bool> = (0..ni)
+        .map(|c| thin[c] && ink_nb[c].iter().any(|&r| fill[r]))
+        .collect();
+    let f_px: Vec<bool> = (0..mask.len())
+        .map(|i| mask[i] == 0 && fill[bg.labels[i] as usize])
+        .collect();
+    let loop_px: Vec<bool> = (0..mask.len())
+        .map(|i| mask[i] == 1 && is_loop[ink.labels[i] as usize])
+        .collect();
     let other_ink = |i: usize| mask[i] == 1 && !loop_px[i];
     match mode {
         LineMode::Ink => unreachable!(),
-        LineMode::Outside => (0..mask.len()).map(|i| (mask[i] == 1 || f_px[i]) as u8).collect(),
-        LineMode::Inside => (0..mask.len()).map(|i| (other_ink(i) || f_px[i]) as u8).collect(),
+        LineMode::Outside => (0..mask.len())
+            .map(|i| (mask[i] == 1 || f_px[i]) as u8)
+            .collect(),
+        LineMode::Inside => (0..mask.len())
+            .map(|i| (other_ink(i) || f_px[i]) as u8)
+            .collect(),
         LineMode::Centre => {
             let not_f: Vec<bool> = (0..mask.len()).map(|i| mask[i] == 0 && !f_px[i]).collect();
             let d_in = ip::distance_to(&f_px, w, h);
@@ -452,13 +511,24 @@ fn mask_relevant(o: &Options) -> Options {
 }
 
 fn trace_relevant(o: &Options) -> Options {
-    Options { style: SvgStyle::Shaper, crop_to_content: false, crop_margin_mm: 0.0, ..o.clone() }
+    Options {
+        style: SvgStyle::Shaper,
+        crop_to_content: false,
+        crop_margin_mm: 0.0,
+        ..o.clone()
+    }
 }
 
 impl Pipeline {
     pub fn new(rgba: Vec<u8>, width: usize, height: usize) -> Self {
         let gray = ip::to_gray(&rgba, width, height);
-        Pipeline { width, height, rgba, gray, cache: Cache::default() }
+        Pipeline {
+            width,
+            height,
+            rgba,
+            gray,
+            cache: Cache::default(),
+        }
     }
 
     pub fn detect(&self) -> Option<frame::Detection> {
@@ -468,7 +538,11 @@ impl Pipeline {
     pub fn run(&mut self, f: &FrameGeom, o: &Options) -> Option<&TraceResult> {
         let rect_key = (*f, o.px_per_mm.to_bits());
         if self.cache.rect_key != Some(rect_key) {
-            self.cache = Cache { rect_key: Some(rect_key), gray: Some(rectify_gray(&self.gray, f, o.px_per_mm)?), ..Default::default() };
+            self.cache = Cache {
+                rect_key: Some(rect_key),
+                gray: Some(rectify_gray(&self.gray, f, o.px_per_mm)?),
+                ..Default::default()
+            };
         }
         let gray = self.cache.gray.as_ref()?;
         let mk = mask_relevant(o);

@@ -36,7 +36,8 @@ fn world(x: f64, y: f64) -> f64 {
         return 25.0;
     }
     // Rectangle 70x50 at (130,40) with a 30x20 hole at (150,55)
-    if (130.0..=200.0).contains(&x) && (40.0..=90.0).contains(&y)
+    if (130.0..=200.0).contains(&x)
+        && (40.0..=90.0).contains(&y)
         && !((150.0..=180.0).contains(&x) && (55.0..=75.0).contains(&y))
     {
         return 25.0;
@@ -66,7 +67,9 @@ fn render(w: usize, h: usize, corners: [Pt; 4]) -> Vec<u8> {
             }
             v /= 4.0;
             let light = 0.7 + 0.3 * (x as f64 / w as f64) * (1.0 - 0.4 * y as f64 / h as f64);
-            s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            s = s
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             let noise = ((s >> 33) as f64 / (1u64 << 31) as f64 - 0.5) * 12.0;
             let v = (v * light + noise).clamp(0.0, 255.0);
             let i = (y * w + x) * 4;
@@ -81,7 +84,12 @@ fn render(w: usize, h: usize, corners: [Pt; 4]) -> Vec<u8> {
 
 const PW: usize = 1400;
 const PH: usize = 1050;
-const TRUE: [Pt; 4] = [[260.0, 230.0], [1180.0, 280.0], [1130.0, 860.0], [220.0, 800.0]];
+const TRUE: [Pt; 4] = [
+    [260.0, 230.0],
+    [1180.0, 280.0],
+    [1130.0, 860.0],
+    [220.0, 800.0],
+];
 
 fn bbox_mm(segs: &[trace::Segment], ppm: f64) -> [f64; 4] {
     let mut b = [f64::MAX, f64::MAX, f64::MIN, f64::MIN];
@@ -101,7 +109,11 @@ fn detects_frame_and_traces_at_real_scale() {
     let det = pipe.detect().expect("frame found");
     for (i, c) in det.corners.iter().enumerate() {
         let d = g::dist(*c, TRUE[i]);
-        assert!(d < 1.5, "corner {i} off by {d:.2}px: {c:?} vs {:?}", TRUE[i]);
+        assert!(
+            d < 1.5,
+            "corner {i} off by {d:.2}px: {c:?} vs {:?}",
+            TRUE[i]
+        );
     }
 
     let frame = FrameGeom::oriented(det.corners, FW, FH);
@@ -117,12 +129,32 @@ fn detects_frame_and_traces_at_real_scale() {
     // Photo resolution is ~3.5 px/mm, so 0.6 mm is well under 2 photo pixels.
     let tol = 0.6;
     let near = |a: f64, b: f64| (a - b).abs() < tol;
-    let circle = outers.iter().map(|s| bbox_mm(&s.segs, ppm)).find(|b| b[0] < 40.0 && b[1] < 40.0).unwrap();
-    assert!(near(circle[0], 30.0) && near(circle[2], 90.0) && near(circle[1], 30.0) && near(circle[3], 90.0), "circle {circle:?}");
-    let rect = outers.iter().map(|s| bbox_mm(&s.segs, ppm)).find(|b| b[0] > 120.0 && b[1] < 50.0).unwrap();
-    assert!(near(rect[0], 130.0) && near(rect[2], 200.0) && near(rect[1], 40.0) && near(rect[3], 90.0), "rect {rect:?}");
+    let circle = outers
+        .iter()
+        .map(|s| bbox_mm(&s.segs, ppm))
+        .find(|b| b[0] < 40.0 && b[1] < 40.0)
+        .unwrap();
+    assert!(
+        near(circle[0], 30.0)
+            && near(circle[2], 90.0)
+            && near(circle[1], 30.0)
+            && near(circle[3], 90.0),
+        "circle {circle:?}"
+    );
+    let rect = outers
+        .iter()
+        .map(|s| bbox_mm(&s.segs, ppm))
+        .find(|b| b[0] > 120.0 && b[1] < 50.0)
+        .unwrap();
+    assert!(
+        near(rect[0], 130.0) && near(rect[2], 200.0) && near(rect[1], 40.0) && near(rect[3], 90.0),
+        "rect {rect:?}"
+    );
     let hole = bbox_mm(&holes[0].segs, ppm);
-    assert!(near(hole[0], 150.0) && near(hole[2], 180.0) && near(hole[1], 55.0) && near(hole[3], 75.0), "hole {hole:?}");
+    assert!(
+        near(hole[0], 150.0) && near(hole[2], 180.0) && near(hole[1], 55.0) && near(hole[3], 75.0),
+        "hole {hole:?}"
+    );
     // Hole belongs to the rectangle.
     let parent = holes[0].contour.parent.expect("hole has parent");
     assert!(bbox_mm(&r.shapes[parent].segs, ppm)[0] > 120.0);
@@ -143,7 +175,11 @@ fn detects_frame_and_traces_at_real_scale() {
     // Rotated output swaps the dimensions.
     let rot = frame.rotated();
     assert_eq!((rot.width_mm, rot.height_mm), (FH, FW));
-    let o2 = Options { style: SvgStyle::Filled, crop_to_content: true, ..Options::default() };
+    let o2 = Options {
+        style: SvgStyle::Filled,
+        crop_to_content: true,
+        ..Options::default()
+    };
     let r2 = pipe.run(&rot, &o2).unwrap();
     let svg2 = r2.to_svg(&rot, &o2, &[]);
     assert_eq!(svg2.matches("<path").count(), 1);
@@ -162,7 +198,14 @@ fn square_keeps_sharp_corners() {
     assert_eq!(cs.len(), 1);
     assert_eq!(cs[0].area, 6400.0);
     assert!(!cs[0].hole);
-    let segs = trace::fit_contour(&cs[0].points, &FitOptions { smoothing: 2.0, tolerance: 0.8, corner_angle: 60.0 });
+    let segs = trace::fit_contour(
+        &cs[0].points,
+        &FitOptions {
+            smoothing: 2.0,
+            tolerance: 0.8,
+            corner_angle: 60.0,
+        },
+    );
     assert!((4..=8).contains(&segs.len()), "segments: {}", segs.len());
     assert!(segs.iter().all(|s| s.kind == trace::SegKind::Line));
 }
@@ -200,7 +243,14 @@ fn hole_and_diagonal_connectivity() {
 #[ignore]
 fn write_sample_photo() {
     let photo = render(PW, PH, TRUE);
-    image::save_buffer("target/sample_photo.png", &photo, PW as u32, PH as u32, image::ExtendedColorType::Rgba8).unwrap();
+    image::save_buffer(
+        "target/sample_photo.png",
+        &photo,
+        PW as u32,
+        PH as u32,
+        image::ExtendedColorType::Rgba8,
+    )
+    .unwrap();
 }
 
 fn ring_mask(w: usize, h: usize, cx: f64, cy: f64, r: f64, width: f64, m: &mut [u8]) {
@@ -238,13 +288,22 @@ fn line_modes_convert_only_thin_closed_loops() {
     let ink = trace::trace_contours(&m, w, h);
     assert_eq!(ink.len(), 2 * 2 + 1 + 1, "two rings (4 edges), disk, line");
 
-    let area = |cs: &[trace::Contour], hole: bool| cs.iter().filter(|c| c.hole == hole).map(|c| c.area).sum::<f64>();
+    let area = |cs: &[trace::Contour], hole: bool| {
+        cs.iter()
+            .filter(|c| c.hole == hole)
+            .map(|c| c.area)
+            .sum::<f64>()
+    };
     for mode in [LineMode::Centre, LineMode::Inside, LineMode::Outside] {
         let out = apply_line_mode(&m, w, h, mode, 8.0);
         let cs = trace::trace_contours(&out, w, h);
         let outers = cs.iter().filter(|c| !c.hole).count();
         let holes = cs.iter().filter(|c| c.hole).count();
-        assert_eq!((outers, holes), (3, 1), "{mode:?}: washer (outer+hole), disk, open line");
+        assert_eq!(
+            (outers, holes),
+            (3, 1),
+            "{mode:?}: washer (outer+hole), disk, open line"
+        );
         let washer = std::f64::consts::PI * (50f64.powi(2) - 20f64.powi(2));
         let a = area(&cs, false) - area(&cs, true);
         assert!(a > washer, "{mode:?}: filled washer present");
@@ -252,7 +311,11 @@ fn line_modes_convert_only_thin_closed_loops() {
     // Centre path of the outer circle sits on the drawn radius.
     let out = apply_line_mode(&m, w, h, LineMode::Centre, 8.0);
     let cs = trace::trace_contours(&out, w, h);
-    let big = cs.iter().filter(|c| !c.hole).max_by(|a, b| a.area.partial_cmp(&b.area).unwrap()).unwrap();
+    let big = cs
+        .iter()
+        .filter(|c| !c.hole)
+        .max_by(|a, b| a.area.partial_cmp(&b.area).unwrap())
+        .unwrap();
     let r = (big.area / std::f64::consts::PI).sqrt();
     assert!((r - 50.0).abs() < 1.0, "centre radius {r}");
 }

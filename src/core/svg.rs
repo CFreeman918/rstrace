@@ -25,7 +25,11 @@ fn fmt(v: f64) -> String {
     let r = (v * 1000.0).round() / 1000.0;
     let s = format!("{r:.3}");
     let s = s.trim_end_matches('0').trim_end_matches('.');
-    if s == "-0" { "0".into() } else { s.into() }
+    if s == "-0" {
+        "0".into()
+    } else {
+        s.into()
+    }
 }
 
 /// Path data with pixel coords scaled by `s` (mm per px) and offset by `o` mm.
@@ -63,7 +67,10 @@ pub fn build_svg(shapes: &[SvgShape], px_per_mm: f64, view: [f64; 4], style: Svg
         SvgStyle::Filled => {
             let d: String = sorted.iter().map(|c| path_data(c.segs, s, o)).collect();
             if !d.is_empty() {
-                let _ = writeln!(body, r##"  <path fill="#000000" fill-rule="evenodd" stroke="none" d="{d}"/>"##);
+                let _ = writeln!(
+                    body,
+                    r##"  <path fill="#000000" fill-rule="evenodd" stroke="none" d="{d}"/>"##
+                );
             }
         }
         SvgStyle::Outline => {
@@ -79,7 +86,10 @@ pub fn build_svg(shapes: &[SvgShape], px_per_mm: f64, view: [f64; 4], style: Svg
             for c in &sorted {
                 let d = path_data(c.segs, s, o);
                 if c.hole {
-                    let _ = writeln!(body, r##"  <path fill="#FFFFFF" stroke="#000000" stroke-width="0.25" d="{d}"/>"##);
+                    let _ = writeln!(
+                        body,
+                        r##"  <path fill="#FFFFFF" stroke="#000000" stroke-width="0.25" d="{d}"/>"##
+                    );
                 } else {
                     let _ = writeln!(body, r##"  <path fill="#000000" stroke="none" d="{d}"/>"##);
                 }

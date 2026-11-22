@@ -25,8 +25,14 @@ pub struct Contour {
 
 pub fn trace_contours(mask: &[u8], w: usize, h: usize) -> Vec<Contour> {
     let (wi, hi) = (w as i32, h as i32);
-    let get = |x: i32, y: i32| x >= 0 && y >= 0 && x < wi && y < hi && mask[(y * wi + x) as usize] == 1;
-    let pix = |px: i32, py: i32, vx: i32, vy: i32| get(px + if vx > 0 { 0 } else { -1 }, py + if vy > 0 { 0 } else { -1 });
+    let get =
+        |x: i32, y: i32| x >= 0 && y >= 0 && x < wi && y < hi && mask[(y * wi + x) as usize] == 1;
+    let pix = |px: i32, py: i32, vx: i32, vy: i32| {
+        get(
+            px + if vx > 0 { 0 } else { -1 },
+            py + if vy > 0 { 0 } else { -1 },
+        )
+    };
     let mut visited = vec![false; w * h];
     let mut contours = Vec::new();
     for y in 0..hi {
@@ -73,7 +79,11 @@ pub fn trace_contours(mask: &[u8], w: usize, h: usize) -> Vec<Contour> {
                 bbox[2] = bbox[2].max(p[0]);
                 bbox[3] = bbox[3].max(p[1]);
             }
-            let inside = if hole { [x as f64 + 0.5, y as f64 - 0.5] } else { [x as f64 + 0.5, y as f64 + 0.5] };
+            let inside = if hole {
+                [x as f64 + 0.5, y as f64 - 0.5]
+            } else {
+                [x as f64 + 0.5, y as f64 + 0.5]
+            };
             contours.push(Contour {
                 points: pts,
                 area: area2.abs() as f64 / 2.0,
@@ -144,7 +154,9 @@ fn assign_parents(cs: &mut [Contour]) {
 
 fn gauss_kernel(sigma: f64) -> Vec<f64> {
     let r = (sigma * 3.0).ceil().max(1.0) as i64;
-    (-r..=r).map(|i| (-((i * i) as f64) / (2.0 * sigma * sigma)).exp()).collect()
+    (-r..=r)
+        .map(|i| (-((i * i) as f64) / (2.0 * sigma * sigma)).exp())
+        .collect()
 }
 
 fn smooth_closed(pts: &[Pt], sigma: f64) -> Vec<Pt> {
@@ -203,7 +215,14 @@ fn find_corners(pts: &[Pt], k: usize, threshold_deg: f64) -> Vec<usize> {
             let (a, b, c) = (pts[(i + n - k) % n], pts[i], pts[(i + k) % n]);
             let (ux, uy, vx, vy) = (b[0] - a[0], b[1] - a[1], c[0] - b[0], c[1] - b[1]);
             let d = ux.hypot(uy) * vx.hypot(vy);
-            if d > 0.0 { ((ux * vx + uy * vy) / d).clamp(-1.0, 1.0).acos().to_degrees() } else { 0.0 }
+            if d > 0.0 {
+                ((ux * vx + uy * vy) / d)
+                    .clamp(-1.0, 1.0)
+                    .acos()
+                    .to_degrees()
+            } else {
+                0.0
+            }
         })
         .collect();
     (0..n)
@@ -216,12 +235,35 @@ fn find_corners(pts: &[Pt], k: usize, threshold_deg: f64) -> Vec<usize> {
 
 // ------------------------------------------------ Schneider Bézier fitting
 
-#[inline] fn sub(a: Pt, b: Pt) -> Pt { [a[0] - b[0], a[1] - b[1]] }
-#[inline] fn add(a: Pt, b: Pt) -> Pt { [a[0] + b[0], a[1] + b[1]] }
-#[inline] fn mul(a: Pt, s: f64) -> Pt { [a[0] * s, a[1] * s] }
-#[inline] fn dot(a: Pt, b: Pt) -> f64 { a[0] * b[0] + a[1] * b[1] }
-#[inline] fn len(a: Pt) -> f64 { a[0].hypot(a[1]) }
-#[inline] fn norm(a: Pt) -> Pt { let l = len(a); if l > 0.0 { [a[0] / l, a[1] / l] } else { [1.0, 0.0] } }
+#[inline]
+fn sub(a: Pt, b: Pt) -> Pt {
+    [a[0] - b[0], a[1] - b[1]]
+}
+#[inline]
+fn add(a: Pt, b: Pt) -> Pt {
+    [a[0] + b[0], a[1] + b[1]]
+}
+#[inline]
+fn mul(a: Pt, s: f64) -> Pt {
+    [a[0] * s, a[1] * s]
+}
+#[inline]
+fn dot(a: Pt, b: Pt) -> f64 {
+    a[0] * b[0] + a[1] * b[1]
+}
+#[inline]
+fn len(a: Pt) -> f64 {
+    a[0].hypot(a[1])
+}
+#[inline]
+fn norm(a: Pt) -> Pt {
+    let l = len(a);
+    if l > 0.0 {
+        [a[0] / l, a[1] / l]
+    } else {
+        [1.0, 0.0]
+    }
+}
 
 pub type Cubic = [Pt; 4];
 
@@ -236,7 +278,13 @@ fn bez(b: &Cubic, t: f64) -> Pt {
 
 fn bez_d1(b: &Cubic, t: f64) -> Pt {
     let mt = 1.0 - t;
-    add(add(mul(sub(b[1], b[0]), 3.0 * mt * mt), mul(sub(b[2], b[1]), 6.0 * mt * t)), mul(sub(b[3], b[2]), 3.0 * t * t))
+    add(
+        add(
+            mul(sub(b[1], b[0]), 3.0 * mt * mt),
+            mul(sub(b[2], b[1]), 6.0 * mt * t),
+        ),
+        mul(sub(b[3], b[2]), 3.0 * t * t),
+    )
 }
 
 fn bez_d2(b: &Cubic, t: f64) -> Pt {
@@ -290,7 +338,11 @@ fn reparameterize(d: &[Pt], b: &Cubic, u: &[f64]) -> Vec<f64> {
             let diff = sub(bez(b, t), p);
             let (q1, q2) = (bez_d1(b, t), bez_d2(b, t));
             let den = dot(q1, q1) + dot(diff, q2);
-            if den.abs() < 1e-12 { t } else { (t - dot(diff, q1) / den).clamp(0.0, 1.0) }
+            if den.abs() < 1e-12 {
+                t
+            } else {
+                (t - dot(diff, q1) / den).clamp(0.0, 1.0)
+            }
         })
         .collect()
 }
@@ -312,7 +364,12 @@ fn fit_cubic(d: &[Pt], t1: Pt, t2: Pt, err: f64, out: &mut Vec<Cubic>, depth: u3
     let n = d.len();
     if n <= 2 || depth > 40 {
         let dist = len(sub(d[n - 1], d[0])) / 3.0;
-        out.push([d[0], add(d[0], mul(t1, dist)), add(d[n - 1], mul(t2, dist)), d[n - 1]]);
+        out.push([
+            d[0],
+            add(d[0], mul(t1, dist)),
+            add(d[n - 1], mul(t2, dist)),
+            d[n - 1],
+        ]);
         return;
     }
     let mut u = chord_params(d);
@@ -344,7 +401,11 @@ fn end_tangent(d: &[Pt], from_start: bool, count: usize) -> Pt {
     let n = d.len();
     let at = |i: usize| if from_start { d[i] } else { d[n - 1 - i] };
     let v = sub(at(count.min(n - 1)), at(0));
-    if len(v) > 0.0 { norm(v) } else { norm(sub(at(n - 1), at(0))) }
+    if len(v) > 0.0 {
+        norm(v)
+    } else {
+        norm(sub(at(n - 1), at(0)))
+    }
 }
 
 /// Sharpen a detected corner: intersect lines fitted to the points just
@@ -381,7 +442,10 @@ fn classify(b: Cubic, tol: f64) -> Segment {
     let chord = sub(b[3], b[0]);
     let l = len(chord);
     if l < 1e-9 {
-        return Segment { kind: SegKind::Line, pts: b };
+        return Segment {
+            kind: SegKind::Line,
+            pts: b,
+        };
     }
     let dist = |p: Pt| ((p[0] - b[0][0]) * chord[1] - (p[1] - b[0][1]) * chord[0]).abs() / l;
     let proj = |p: Pt| dot(sub(p, b[0]), chord) / (l * l);
@@ -389,7 +453,14 @@ fn classify(b: Cubic, tol: f64) -> Segment {
         && dist(b[2]) < tol
         && (-0.01..1.01).contains(&proj(b[1]))
         && (-0.01..1.01).contains(&proj(b[2]));
-    Segment { kind: if straight { SegKind::Line } else { SegKind::Cubic }, pts: b }
+    Segment {
+        kind: if straight {
+            SegKind::Line
+        } else {
+            SegKind::Cubic
+        },
+        pts: b,
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -418,7 +489,10 @@ pub fn fit_contour(points: &[[i32; 2]], o: &FitOptions) -> Vec<Segment> {
         return (0..n)
             .map(|i| {
                 let (p, q) = (pts[i], pts[(i + 1) % n]);
-                Segment { kind: SegKind::Line, pts: [p, p, q, q] }
+                Segment {
+                    kind: SegKind::Line,
+                    pts: [p, p, q, q],
+                }
             })
             .collect();
     }
@@ -441,7 +515,12 @@ pub fn fit_contour(points: &[[i32; 2]], o: &FitOptions) -> Vec<Segment> {
             .map(|c| {
                 let before = gap(corners[(c + nc - 1) % nc], corners[c]) / 2;
                 let after = gap(corners[c], corners[(c + 1) % nc]) / 2;
-                snap_corner(&pts, corners[c], before.saturating_sub(1), after.saturating_sub(1))
+                snap_corner(
+                    &pts,
+                    corners[c],
+                    before.saturating_sub(1),
+                    after.saturating_sub(1),
+                )
             })
             .collect();
         for c in 0..nc {

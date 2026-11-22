@@ -26,7 +26,11 @@ struct Settings {
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { long_mm: TRACE_CAPTURE_MM.0, short_mm: TRACE_CAPTURE_MM.1, options: Options::default() }
+        Settings {
+            long_mm: TRACE_CAPTURE_MM.0,
+            short_mm: TRACE_CAPTURE_MM.1,
+            options: Options::default(),
+        }
     }
 }
 
@@ -80,25 +84,35 @@ pub struct App {
 
 pub fn run(initial: Option<PathBuf>) -> Result<(), String> {
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_inner_size([1280.0, 820.0]).with_title("rstrace"),
+        viewport: egui::ViewportBuilder::default()
+            .with_inner_size([1280.0, 820.0])
+            .with_title("rstrace"),
         ..Default::default()
     };
-    eframe::run_native("rstrace", options, Box::new(move |cc| {
-        let mut app = App::new(cc);
-        if let Some(p) = initial {
-            app.open(&cc.egui_ctx, &p);
-            // Undocumented: jump straight to the trace step (used for screenshots).
-            if std::env::var_os("RSTRACE_START_TRACE").is_some() {
-                app.step = Step::Trace;
+    eframe::run_native(
+        "rstrace",
+        options,
+        Box::new(move |cc| {
+            let mut app = App::new(cc);
+            if let Some(p) = initial {
+                app.open(&cc.egui_ctx, &p);
+                // Undocumented: jump straight to the trace step (used for screenshots).
+                if std::env::var_os("RSTRACE_START_TRACE").is_some() {
+                    app.step = Step::Trace;
+                }
             }
-        }
-        Ok(Box::new(app))
-    })).map_err(|e| e.to_string())
+            Ok(Box::new(app))
+        }),
+    )
+    .map_err(|e| e.to_string())
 }
 
 impl App {
     fn new(cc: &eframe::CreationContext) -> Self {
-        let settings = cc.storage.and_then(|s| eframe::get_value(s, SETTINGS_KEY)).unwrap_or_default();
+        let settings = cc
+            .storage
+            .and_then(|s| eframe::get_value(s, SETTINGS_KEY))
+            .unwrap_or_default();
         let (tx, rx) = channel();
         App {
             settings,
@@ -124,7 +138,8 @@ impl App {
     }
 
     fn frame_geom(&self) -> FrameGeom {
-        let mut f = FrameGeom::oriented(self.corners, self.settings.long_mm, self.settings.short_mm);
+        let mut f =
+            FrameGeom::oriented(self.corners, self.settings.long_mm, self.settings.short_mm);
         for _ in 0..self.rotation % 4 {
             f = f.rotated();
         }
@@ -135,7 +150,11 @@ impl App {
         match rstrace::load::load_photo(path) {
             Ok(photo) => {
                 let (w, h) = (photo.width, photo.height);
-                let tex = ctx.load_texture("photo", texture_image(&photo.rgba, w, h), TextureOptions::LINEAR);
+                let tex = ctx.load_texture(
+                    "photo",
+                    texture_image(&photo.rgba, w, h),
+                    TextureOptions::LINEAR,
+                );
                 let pipeline = Pipeline::new(photo.rgba, w, h);
                 let det = pipeline.detect();
                 self.status = match &det {
@@ -144,10 +163,21 @@ impl App {
                 };
                 self.corners = det.map(|d| d.corners).unwrap_or_else(|| {
                     let (w, h) = (w as f64, h as f64);
-                    [[w * 0.2, h * 0.2], [w * 0.8, h * 0.2], [w * 0.8, h * 0.8], [w * 0.2, h * 0.8]]
+                    [
+                        [w * 0.2, h * 0.2],
+                        [w * 0.8, h * 0.2],
+                        [w * 0.8, h * 0.8],
+                        [w * 0.2, h * 0.8],
+                    ]
                 });
                 self.rotation = 0;
-                self.photo = Some(Photo { path: path.to_path_buf(), width: w, height: h, tex, pipeline: Arc::new(Mutex::new(pipeline)) });
+                self.photo = Some(Photo {
+                    path: path.to_path_buf(),
+                    width: w,
+                    height: h,
+                    tex,
+                    pipeline: Arc::new(Mutex::new(pipeline)),
+                });
                 self.result = None;
                 self.result_frame = None;
                 self.color_tex = None;
@@ -168,7 +198,10 @@ impl App {
                     self.corners = d.corners;
                     self.status = "Frame re-detected.".into();
                 }
-                None => self.status = "Couldn't find the frame automatically; place the corners by hand.".into(),
+                None => {
+                    self.status =
+                        "Couldn't find the frame automatically; place the corners by hand.".into()
+                }
             }
         }
     }
@@ -201,10 +234,20 @@ impl App {
                     let mask = mask_image(&result);
                     let color = need_color.then(|| {
                         let ppm = display_ppm(&frame, opts.px_per_mm);
-                        let (w, h, rgba) = rectify_rgba(&pipe.rgba, pipe.width, pipe.height, &frame, ppm).unwrap();
-                        (egui::ColorImage::from_rgba_unmultiplied([w, h], &rgba), frame)
+                        let (w, h, rgba) =
+                            rectify_rgba(&pipe.rgba, pipe.width, pipe.height, &frame, ppm).unwrap();
+                        (
+                            egui::ColorImage::from_rgba_unmultiplied([w, h], &rgba),
+                            frame,
+                        )
                     });
-                    Ok(Output { generation, result, frame, color, mask })
+                    Ok(Output {
+                        generation,
+                        result,
+                        frame,
+                        color,
+                        mask,
+                    })
                 }
             };
             let _ = tx.send(out);
@@ -217,9 +260,13 @@ impl App {
             match msg {
                 Ok(out) => {
                     if let Some((img, f)) = out.color {
-                        self.color_tex = Some((ctx.load_texture("rectified", img, TextureOptions::LINEAR), f));
+                        self.color_tex = Some((
+                            ctx.load_texture("rectified", img, TextureOptions::LINEAR),
+                            f,
+                        ));
                     }
-                    self.mask_tex = Some(ctx.load_texture("mask", out.mask, TextureOptions::NEAREST));
+                    self.mask_tex =
+                        Some(ctx.load_texture("mask", out.mask, TextureOptions::NEAREST));
                     self.result = Some(out.result);
                     self.result_frame = Some(out.frame);
                     if out.generation == self.generation.load(Ordering::SeqCst) {
@@ -235,11 +282,20 @@ impl App {
     }
 
     fn export(&mut self) {
-        let (Some(r), Some(f), Some(photo)) = (&self.result, &self.result_frame, &self.photo) else { return };
+        let (Some(r), Some(f), Some(photo)) = (&self.result, &self.result_frame, &self.photo)
+        else {
+            return;
+        };
         let excluded = r.excluded(&self.excluded_px(r));
         let svg = r.to_svg(f, &self.settings.options, &excluded);
-        let name = photo.path.file_stem().map(|s| format!("{}.svg", s.to_string_lossy())).unwrap_or("trace.svg".into());
-        let mut dlg = rfd::FileDialog::new().add_filter("SVG", &["svg"]).set_file_name(name);
+        let name = photo
+            .path
+            .file_stem()
+            .map(|s| format!("{}.svg", s.to_string_lossy()))
+            .unwrap_or("trace.svg".into());
+        let mut dlg = rfd::FileDialog::new()
+            .add_filter("SVG", &["svg"])
+            .set_file_name(name);
         if let Some(dir) = photo.path.parent() {
             dlg = dlg.set_directory(dir);
         }
@@ -252,7 +308,10 @@ impl App {
     }
 
     fn excluded_px(&self, r: &TraceResult) -> Vec<Pt> {
-        self.excluded_mm.iter().map(|p| [p[0] * r.px_per_mm, p[1] * r.px_per_mm]).collect()
+        self.excluded_mm
+            .iter()
+            .map(|p| [p[0] * r.px_per_mm, p[1] * r.px_per_mm])
+            .collect()
     }
 
     // ------------------------------------------------------------ panels
@@ -262,14 +321,20 @@ impl App {
         ui.horizontal(|ui| {
             if ui.button("Open photo…").clicked() {
                 if let Some(p) = rfd::FileDialog::new()
-                    .add_filter("Images", &["jpg", "jpeg", "png", "webp", "tif", "tiff", "bmp"])
+                    .add_filter(
+                        "Images",
+                        &["jpg", "jpeg", "png", "webp", "tif", "tiff", "bmp"],
+                    )
                     .pick_file()
                 {
                     self.open(ui.ctx(), &p);
                 }
             }
             let can_export = self.result.is_some();
-            if ui.add_enabled(can_export, egui::Button::new("Export SVG…")).clicked() {
+            if ui
+                .add_enabled(can_export, egui::Button::new("Export SVG…"))
+                .clicked()
+            {
                 self.export();
             }
         });
@@ -390,8 +455,18 @@ impl App {
         let (w, h) = (photo.width as f32, photo.height as f32);
         let scale = (avail.width() / w).min(avail.height() / h);
         let img_rect = Rect::from_center_size(avail.center(), Vec2::new(w * scale, h * scale));
-        let to_screen = |p: Pt| Pos2::new(img_rect.min.x + p[0] as f32 * scale, img_rect.min.y + p[1] as f32 * scale);
-        let to_img = |p: Pos2| [((p.x - img_rect.min.x) / scale) as f64, ((p.y - img_rect.min.y) / scale) as f64];
+        let to_screen = |p: Pt| {
+            Pos2::new(
+                img_rect.min.x + p[0] as f32 * scale,
+                img_rect.min.y + p[1] as f32 * scale,
+            )
+        };
+        let to_img = |p: Pos2| {
+            [
+                ((p.x - img_rect.min.x) / scale) as f64,
+                ((p.y - img_rect.min.y) / scale) as f64,
+            ]
+        };
 
         let painter = ui.painter_at(avail);
         let full_uv = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
@@ -402,7 +477,10 @@ impl App {
         let f = self.frame_geom();
         let pts: Vec<Pos2> = self.corners.iter().map(|&p| to_screen(p)).collect();
         for i in 0..4 {
-            painter.line_segment([pts[i], pts[(i + 1) % 4]], Stroke::new(2.0, Color32::from_rgb(0, 200, 255)));
+            painter.line_segment(
+                [pts[i], pts[(i + 1) % 4]],
+                Stroke::new(2.0, Color32::from_rgb(0, 200, 255)),
+            );
         }
         let (a, b) = (to_screen(f.corners[0]), to_screen(f.corners[1]));
         painter.line_segment([a, b], Stroke::new(5.0, Color32::from_rgb(255, 170, 0)));
@@ -418,7 +496,11 @@ impl App {
         let pointer = ui.ctx().pointer_interact_pos();
         for i in 0..4 {
             let c = to_screen(self.corners[i]);
-            let resp = ui.interact(Rect::from_center_size(c, Vec2::splat(28.0)), ui.scope_id().with(("corner", i)), Sense::drag());
+            let resp = ui.interact(
+                Rect::from_center_size(c, Vec2::splat(28.0)),
+                ui.scope_id().with(("corner", i)),
+                Sense::drag(),
+            );
             if resp.drag_started() {
                 self.dragging = Some(i);
             }
@@ -432,7 +514,11 @@ impl App {
                 self.dragging = None;
             }
             let hot = resp.hovered() || resp.dragged();
-            painter.circle_stroke(c, if hot { 12.0 } else { 9.0 }, Stroke::new(2.5, Color32::from_rgb(0, 200, 255)));
+            painter.circle_stroke(
+                c,
+                if hot { 12.0 } else { 9.0 },
+                Stroke::new(2.5, Color32::from_rgb(0, 200, 255)),
+            );
             painter.circle_filled(c, 2.0, Color32::from_rgb(255, 60, 60));
             if hot {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
@@ -444,17 +530,34 @@ impl App {
             let c = self.corners[i];
             let zoom_px = 60.0f64; // photo pixels shown across the loupe
             let uv = Rect::from_min_max(
-                Pos2::new(((c[0] - zoom_px / 2.0) / photo.width as f64) as f32, ((c[1] - zoom_px / 2.0) / photo.height as f64) as f32),
-                Pos2::new(((c[0] + zoom_px / 2.0) / photo.width as f64) as f32, ((c[1] + zoom_px / 2.0) / photo.height as f64) as f32),
+                Pos2::new(
+                    ((c[0] - zoom_px / 2.0) / photo.width as f64) as f32,
+                    ((c[1] - zoom_px / 2.0) / photo.height as f64) as f32,
+                ),
+                Pos2::new(
+                    ((c[0] + zoom_px / 2.0) / photo.width as f64) as f32,
+                    ((c[1] + zoom_px / 2.0) / photo.height as f64) as f32,
+                ),
             );
             let size = 200.0;
             let lr = Rect::from_min_size(avail.min + Vec2::new(12.0, 12.0), Vec2::splat(size));
             painter.rect_filled(lr, 4.0, Color32::BLACK);
             painter.image(tex_id, lr, uv, Color32::WHITE);
             let m = lr.center();
-            painter.line_segment([Pos2::new(lr.min.x, m.y), Pos2::new(lr.max.x, m.y)], Stroke::new(1.0, Color32::RED));
-            painter.line_segment([Pos2::new(m.x, lr.min.y), Pos2::new(m.x, lr.max.y)], Stroke::new(1.0, Color32::RED));
-            painter.rect_stroke(lr, 4.0, Stroke::new(2.0, Color32::WHITE), egui::StrokeKind::Outside);
+            painter.line_segment(
+                [Pos2::new(lr.min.x, m.y), Pos2::new(lr.max.x, m.y)],
+                Stroke::new(1.0, Color32::RED),
+            );
+            painter.line_segment(
+                [Pos2::new(m.x, lr.min.y), Pos2::new(m.x, lr.max.y)],
+                Stroke::new(1.0, Color32::RED),
+            );
+            painter.rect_stroke(
+                lr,
+                4.0,
+                Stroke::new(2.0, Color32::WHITE),
+                egui::StrokeKind::Outside,
+            );
         }
         ui.allocate_rect(avail, Sense::hover());
     }
@@ -469,7 +572,12 @@ impl App {
         let (w, h) = (r.width as f32, r.height as f32);
         let scale = (avail.width() / w).min(avail.height() / h) * 0.97;
         let rect = Rect::from_center_size(avail.center(), Vec2::new(w * scale, h * scale));
-        let to_screen = |p: Pt| Pos2::new(rect.min.x + p[0] as f32 * scale, rect.min.y + p[1] as f32 * scale);
+        let to_screen = |p: Pt| {
+            Pos2::new(
+                rect.min.x + p[0] as f32 * scale,
+                rect.min.y + p[1] as f32 * scale,
+            )
+        };
         let painter = ui.painter_at(avail);
         let uv = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
         painter.rect_filled(rect, 0.0, Color32::WHITE);
@@ -485,12 +593,20 @@ impl App {
         }
 
         let resp = ui.allocate_rect(avail, Sense::click());
-        let hover_px = resp.hover_pos().filter(|p| rect.contains(*p)).map(|p| [((p.x - rect.min.x) / scale) as f64, ((p.y - rect.min.y) / scale) as f64]);
+        let hover_px = resp.hover_pos().filter(|p| rect.contains(*p)).map(|p| {
+            [
+                ((p.x - rect.min.x) / scale) as f64,
+                ((p.y - rect.min.y) / scale) as f64,
+            ]
+        });
         let hovered = hover_px.and_then(|p| r.shape_at(p));
         let excluded = r.excluded(&self.excluded_px(&r));
 
         for (i, s) in r.shapes.iter().enumerate() {
-            let poly: Vec<Pos2> = trace::flatten(&s.segs, 12).into_iter().map(to_screen).collect();
+            let poly: Vec<Pos2> = trace::flatten(&s.segs, 12)
+                .into_iter()
+                .map(to_screen)
+                .collect();
             if poly.len() < 2 {
                 continue;
             }
@@ -501,12 +617,20 @@ impl App {
             } else {
                 (Color32::from_rgb(20, 100, 230), 1.6)
             };
-            let width = if hovered == Some(i) { width + 1.5 } else { width };
+            let width = if hovered == Some(i) {
+                width + 1.5
+            } else {
+                width
+            };
             painter.add(egui::Shape::closed_line(poly, Stroke::new(width, color)));
         }
         if let Some(i) = hovered {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-            resp.clone().on_hover_text(if excluded[i] { "Click to include this shape" } else { "Click to remove this shape" });
+            resp.clone().on_hover_text(if excluded[i] {
+                "Click to include this shape"
+            } else {
+                "Click to remove this shape"
+            });
         }
         if resp.clicked() {
             if let (Some(p), Some(i)) = (hover_px, hovered) {
@@ -531,14 +655,29 @@ impl App {
         painter.text(
             rect.left_bottom() + Vec2::new(4.0, 6.0),
             egui::Align2::LEFT_TOP,
-            format!("{:.1} × {:.1} mm · {} shapes ({} removed)", f.width_mm, f.height_mm, kept, r.shapes.len() - kept),
+            format!(
+                "{:.1} × {:.1} mm · {} shapes ({} removed)",
+                f.width_mm,
+                f.height_mm,
+                kept,
+                r.shapes.len() - kept
+            ),
             egui::FontId::proportional(13.0),
             ui.visuals().text_color(),
         );
         let ten_mm = 10.0 * r.px_per_mm as f32 * scale;
         let start = rect.right_bottom() + Vec2::new(-ten_mm - 4.0, 12.0);
-        painter.line_segment([start, start + Vec2::new(ten_mm, 0.0)], Stroke::new(3.0, ui.visuals().text_color()));
-        painter.text(start + Vec2::new(ten_mm / 2.0, -3.0), egui::Align2::CENTER_BOTTOM, "10 mm", egui::FontId::proportional(11.0), ui.visuals().text_color());
+        painter.line_segment(
+            [start, start + Vec2::new(ten_mm, 0.0)],
+            Stroke::new(3.0, ui.visuals().text_color()),
+        );
+        painter.text(
+            start + Vec2::new(ten_mm / 2.0, -3.0),
+            egui::Align2::CENTER_BOTTOM,
+            "10 mm",
+            egui::FontId::proportional(11.0),
+            ui.visuals().text_color(),
+        );
     }
 }
 
@@ -575,7 +714,10 @@ fn texture_image(rgba: &[u8], w: usize, h: usize) -> egui::ColorImage {
     }
     let img = image::RgbaImage::from_raw(w as u32, h as u32, rgba.to_vec()).unwrap();
     let s = MAX_TEXTURE as f64 / w.max(h) as f64;
-    let (nw, nh) = (((w as f64 * s) as u32).max(1), ((h as f64 * s) as u32).max(1));
+    let (nw, nh) = (
+        ((w as f64 * s) as u32).max(1),
+        ((h as f64 * s) as u32).max(1),
+    );
     let small = image::imageops::resize(&img, nw, nh, image::imageops::FilterType::Triangle);
     egui::ColorImage::from_rgba_unmultiplied([nw as usize, nh as usize], small.as_raw())
 }
@@ -596,7 +738,14 @@ impl eframe::App for App {
         self.receive(&ctx);
 
         // Drag & drop.
-        let dropped: Vec<PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().map(|f| f.path().to_path_buf()).filter(|p| !p.as_os_str().is_empty()).collect());
+        let dropped: Vec<PathBuf> = ctx.input(|i| {
+            i.raw
+                .dropped_files
+                .iter()
+                .map(|f| f.path().to_path_buf())
+                .filter(|p| !p.as_os_str().is_empty())
+                .collect()
+        });
         if let Some(p) = dropped.first() {
             self.open(&ctx, p);
         }
@@ -613,9 +762,12 @@ impl eframe::App for App {
                 ui.label(&self.status);
             });
         });
-        egui::Panel::left("controls").resizable(true).default_size(300.0).show(ui, |ui| {
-            self.side_panel(ui);
-        });
+        egui::Panel::left("controls")
+            .resizable(true)
+            .default_size(300.0)
+            .show(ui, |ui| {
+                self.side_panel(ui);
+            });
         egui::CentralPanel::default().show(ui, |ui| {
             if self.photo.is_none() {
                 ui.centered_and_justified(|ui| {

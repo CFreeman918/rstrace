@@ -10,7 +10,11 @@ pub struct Gray {
 
 impl Gray {
     pub fn new(width: usize, height: usize) -> Self {
-        Gray { width, height, data: vec![0.0; width * height] }
+        Gray {
+            width,
+            height,
+            data: vec![0.0; width * height],
+        }
     }
 
     #[inline]
@@ -28,7 +32,8 @@ impl Gray {
         let y1 = (y0 + 1).min(self.height - 1);
         let (tx, ty) = (x - x0 as f64, y - y0 as f64);
         let g = |xx: usize, yy: usize| self.get(xx, yy) as f64;
-        (g(x0, y0) * (1.0 - tx) + g(x1, y0) * tx) * (1.0 - ty) + (g(x0, y1) * (1.0 - tx) + g(x1, y1) * tx) * ty
+        (g(x0, y0) * (1.0 - tx) + g(x1, y0) * tx) * (1.0 - ty)
+            + (g(x0, y1) * (1.0 - tx) + g(x1, y1) * tx) * ty
     }
 }
 
@@ -38,7 +43,11 @@ pub fn to_gray(rgba: &[u8], width: usize, height: usize) -> Gray {
         .chunks_exact(4)
         .map(|p| p[0] as f32 * 0.299 + p[1] as f32 * 0.587 + p[2] as f32 * 0.114)
         .collect();
-    Gray { width, height, data }
+    Gray {
+        width,
+        height,
+        data,
+    }
 }
 
 /// Area-average downscale so the long edge is <= max_size. Returns (image, scale).
@@ -246,7 +255,13 @@ pub fn flatten_lighting(img: &Gray, block: usize) -> Gray {
 pub fn threshold(img: &Gray, t: f32, invert: bool) -> Vec<u8> {
     img.data
         .iter()
-        .map(|&v| if invert { (v >= t) as u8 } else { (v < t) as u8 })
+        .map(|&v| {
+            if invert {
+                (v >= t) as u8
+            } else {
+                (v < t) as u8
+            }
+        })
         .collect()
 }
 
@@ -300,7 +315,11 @@ pub fn label(mask: &[u8], w: usize, h: usize, value: u8, conn8: bool) -> Labels 
         areas.push(area);
         touches_border.push(border);
     }
-    Labels { labels, areas, touches_border }
+    Labels {
+        labels,
+        areas,
+        touches_border,
+    }
 }
 
 /// Remove ink specks and fill background pinholes smaller than `min_area` px.
@@ -341,7 +360,11 @@ pub fn morph(mask: &[u8], w: usize, h: usize, r: usize, dilate: bool) -> Vec<u8>
             let (x0, x1) = window(x, r, w);
             let s = sat[y1 * ww + x1] - sat[y0 * ww + x1] - sat[y1 * ww + x0] + sat[y0 * ww + x0];
             let full = ((x1 - x0) * (y1 - y0)) as f64;
-            out[y * w + x] = if dilate { (s > 0.0) as u8 } else { (s >= full) as u8 };
+            out[y * w + x] = if dilate {
+                (s > 0.0) as u8
+            } else {
+                (s >= full) as u8
+            };
         }
     }
     out
@@ -374,7 +397,10 @@ pub fn hysteresis(img: &Gray, strong: f32, weak: f32, invert: bool) -> Vec<u8> {
             keep[lab.labels[i] as usize] = true;
         }
     }
-    lab.labels.iter().map(|&l| (l >= 0 && keep[l as usize]) as u8).collect()
+    lab.labels
+        .iter()
+        .map(|&l| (l >= 0 && keep[l as usize]) as u8)
+        .collect()
 }
 
 /// Morphological closing (dilate then erode): bridges gaps up to ~2r px.
@@ -394,11 +420,17 @@ pub fn distance_to(seed: &[bool], w: usize, h: usize) -> Vec<f32> {
         for x in 0..w {
             let i = y * w + x;
             let mut v = d[i];
-            if x > 0 { v = v.min(d[i - 1] + a); }
+            if x > 0 {
+                v = v.min(d[i - 1] + a);
+            }
             if y > 0 {
                 v = v.min(d[i - w] + a);
-                if x > 0 { v = v.min(d[i - w - 1] + b); }
-                if x + 1 < w { v = v.min(d[i - w + 1] + b); }
+                if x > 0 {
+                    v = v.min(d[i - w - 1] + b);
+                }
+                if x + 1 < w {
+                    v = v.min(d[i - w + 1] + b);
+                }
             }
             d[i] = v;
         }
@@ -407,11 +439,17 @@ pub fn distance_to(seed: &[bool], w: usize, h: usize) -> Vec<f32> {
         for x in (0..w).rev() {
             let i = y * w + x;
             let mut v = d[i];
-            if x + 1 < w { v = v.min(d[i + 1] + a); }
+            if x + 1 < w {
+                v = v.min(d[i + 1] + a);
+            }
             if y + 1 < h {
                 v = v.min(d[i + w] + a);
-                if x + 1 < w { v = v.min(d[i + w + 1] + b); }
-                if x > 0 { v = v.min(d[i + w - 1] + b); }
+                if x + 1 < w {
+                    v = v.min(d[i + w + 1] + b);
+                }
+                if x > 0 {
+                    v = v.min(d[i + w - 1] + b);
+                }
             }
             d[i] = v;
         }
