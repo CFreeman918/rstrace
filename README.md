@@ -16,11 +16,19 @@ no network access, no account and no runtime dependencies.
    area), sampled at 8 px/mm.
 3. **Threshold.** Uneven lighting and shadows are divided out by estimating the
    paper's brightness across the image. The result is thresholded (Otsu by
-   default), specks are removed and pinholes filled.
-4. **Trace.** Boundaries are followed along pixel edges. Sharp corners are
+   default) with hysteresis: faint stretches of a line, such as the far side of
+   an angled photo, are kept when they connect to clearly dark ink. Small gaps
+   are then bridged, specks removed and pinholes filled.
+4. **Lines vs. shapes.** A closed pen outline (for example, drawn around an
+   object) has two edges. Thin closed loops are turned into one region whose
+   edge follows the **centre** of the line (default), its **inside** edge
+   (closest to the object you drew around) or its **outside** edge. Filled
+   shapes and open strokes are traced as drawn, and nested loops keep their
+   holes, so a washer drawn as two circles stays a washer.
+5. **Trace.** Boundaries are followed along pixel edges. Sharp corners are
    detected and kept, and the rest is smoothed and fitted with cubic Béziers to
    a set tolerance (0.1 mm by default).
-5. **Export.** The SVG is written in millimetres (`width="263mm"`). By default it
+6. **Export.** The SVG is written in millimetres (`width="263mm"`). By default it
    uses Shaper Origin's cut encoding: outer boundaries get a black fill
    (exterior cut) and holes get a white fill with a black stroke (interior
    cut). Plain filled and outline-only styles are also available.
@@ -47,6 +55,8 @@ Settings (frame size, thresholds, etc.) are remembered between runs.
 rstrace photo.jpg                      # auto-detect, writes photo.svg
 rstrace photo.jpg -o part.svg --crop   # crop the SVG to the drawing
 rstrace photo.jpg --frame 263x173 --smoothing 0.4 --style outline
+rstrace photo.jpg --lines inside       # path on the inside of a drawn outline
+rstrace photo.jpg --debug-mask m.png   # see which pixels counted as ink
 rstrace photo.jpg --corners 812,604,3301,655,3260,2410,780,2350   # manual corners
 rstrace --help
 ```
@@ -60,9 +70,11 @@ rstrace --help
 - Use even light and avoid harsh shadows from the frame. The **edge margin**
   setting ignores marks right next to the frame.
 - Bold marker lines trace better than faint pencil.
-- **Calibrate once.** Measure your frame's inner opening with a ruler or
-  calipers and enter it under *Frame*. All output scale comes from this number.
-  263 × 173 mm is Shaper's published capture area.
+- **Scale comes from the frame size.** The default 263 × 173 mm is Shaper's
+  published capture area. On a real, fairly oblique test shot with a Shaper
+  Trace frame, a 150 mm ruler outline measured 150.1 mm (pen-line centre to
+  centre) with this default. If your results run consistently large or small,
+  scale both numbers by the same factor.
 
 ## Building
 

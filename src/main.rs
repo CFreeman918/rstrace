@@ -69,6 +69,18 @@ struct Cli {
     #[arg(long)]
     resolution: Option<f64>,
 
+    /// Don't recover faint line segments (hysteresis thresholding).
+    #[arg(long)]
+    no_faint: bool,
+
+    /// Bridge gaps in lines up to this size (mm).
+    #[arg(long)]
+    close_gaps: Option<f64>,
+
+    /// How closed pen outlines become paths.
+    #[arg(long, value_enum)]
+    lines: Option<rstrace::LineMode>,
+
     /// SVG style.
     #[arg(long, value_enum)]
     style: Option<SvgStyle>,
@@ -84,6 +96,10 @@ struct Cli {
     /// Also write the rectified photo (PNG) to this path.
     #[arg(long)]
     debug_rectified: Option<PathBuf>,
+
+    /// Also write the threshold mask (PNG, black = ink) to this path.
+    #[arg(long)]
+    debug_mask: Option<PathBuf>,
 }
 
 fn parse_pair(s: &str) -> Result<(f64, f64), String> {
@@ -136,6 +152,9 @@ fn run_cli(cli: Cli, input: PathBuf) -> Result<(), String> {
     if let Some(v) = cli.inset { o.inset_mm = v; }
     if let Some(v) = cli.resolution { o.px_per_mm = v; }
     if let Some(v) = cli.style { o.style = v; }
+    if let Some(v) = cli.lines { o.line_mode = v; }
+    if let Some(v) = cli.close_gaps { o.close_gaps_mm = v; }
+    o.catch_faint = !cli.no_faint;
     o.crop_to_content = cli.crop;
 
     if let Some(p) = &cli.debug_rectified {
@@ -145,6 +164,10 @@ fn run_cli(cli: Cli, input: PathBuf) -> Result<(), String> {
     }
 
     let result = pipe.run(&frame, &o).ok_or("degenerate corners")?;
+    if let Some(p) = &cli.debug_mask {
+        let px: Vec<u8> = result.mask.iter().map(|&m| if m == 1 { 0 } else { 255 }).collect();
+        image::save_buffer(p, &px, result.width as u32, result.height as u32, image::ExtendedColorType::L8).map_err(|e| e.to_string())?;
+    }
     let svg = result.to_svg(&frame, &o, &[]);
     let out = cli.output.clone().unwrap_or_else(|| input.with_extension("svg"));
     std::fs::write(&out, svg).map_err(|e| format!("Cannot write {}: {e}", out.display()))?;

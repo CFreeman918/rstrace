@@ -202,3 +202,57 @@ fn write_sample_photo() {
     let photo = render(PW, PH, TRUE);
     image::save_buffer("target/sample_photo.png", &photo, PW as u32, PH as u32, image::ExtendedColorType::Rgba8).unwrap();
 }
+
+fn ring_mask(w: usize, h: usize, cx: f64, cy: f64, r: f64, width: f64, m: &mut [u8]) {
+    for y in 0..h {
+        for x in 0..w {
+            let d = (x as f64 + 0.5 - cx).hypot(y as f64 + 0.5 - cy);
+            if (d - r).abs() <= width / 2.0 {
+                m[y * w + x] = 1;
+            }
+        }
+    }
+}
+
+#[test]
+fn line_modes_convert_only_thin_closed_loops() {
+    use rstrace::core::pipeline::apply_line_mode;
+    use rstrace::LineMode;
+    let (w, h) = (200, 200);
+    // Washer drawn as two pen circles, plus a filled disk and an open stroke.
+    let mut m = vec![0u8; w * h];
+    ring_mask(w, h, 70.0, 70.0, 50.0, 4.0, &mut m);
+    ring_mask(w, h, 70.0, 70.0, 20.0, 4.0, &mut m);
+    for y in 0..h {
+        for x in 0..w {
+            if (x as f64 - 160.0).hypot(y as f64 - 160.0) < 25.0 {
+                m[y * w + x] = 1; // filled disk
+            }
+        }
+    }
+    for x in 20..120 {
+        for y in 170..173 {
+            m[y * w + x] = 1; // open line
+        }
+    }
+    let ink = trace::trace_contours(&m, w, h);
+    assert_eq!(ink.len(), 2 * 2 + 1 + 1, "two rings (4 edges), disk, line");
+
+    let area = |cs: &[trace::Contour], hole: bool| cs.iter().filter(|c| c.hole == hole).map(|c| c.area).sum::<f64>();
+    for mode in [LineMode::Centre, LineMode::Inside, LineMode::Outside] {
+        let out = apply_line_mode(&m, w, h, mode, 8.0);
+        let cs = trace::trace_contours(&out, w, h);
+        let outers = cs.iter().filter(|c| !c.hole).count();
+        let holes = cs.iter().filter(|c| c.hole).count();
+        assert_eq!((outers, holes), (3, 1), "{mode:?}: washer (outer+hole), disk, open line");
+        let washer = std::f64::consts::PI * (50f64.powi(2) - 20f64.powi(2));
+        let a = area(&cs, false) - area(&cs, true);
+        assert!(a > washer, "{mode:?}: filled washer present");
+    }
+    // Centre path of the outer circle sits on the drawn radius.
+    let out = apply_line_mode(&m, w, h, LineMode::Centre, 8.0);
+    let cs = trace::trace_contours(&out, w, h);
+    let big = cs.iter().filter(|c| !c.hole).max_by(|a, b| a.area.partial_cmp(&b.area).unwrap()).unwrap();
+    let r = (big.area / std::f64::consts::PI).sqrt();
+    assert!((r - 50.0).abs() < 1.0, "centre radius {r}");
+}

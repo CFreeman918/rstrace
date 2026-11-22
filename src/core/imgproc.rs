@@ -359,3 +359,62 @@ pub fn clear_border(mask: &mut [u8], w: usize, h: usize, px: usize) {
         }
     }
 }
+
+/// Hysteresis threshold: pixels passing the `weak` threshold are kept only if
+/// their 8-connected component contains a pixel passing the `strong` one.
+/// Recovers faint parts of lines that connect to clearly dark ink.
+pub fn hysteresis(img: &Gray, strong: f32, weak: f32, invert: bool) -> Vec<u8> {
+    let (w, h) = (img.width, img.height);
+    let weak_mask = threshold(img, weak, invert);
+    let lab = label(&weak_mask, w, h, 1, true);
+    let mut keep = vec![false; lab.areas.len()];
+    for (i, &v) in img.data.iter().enumerate() {
+        let is_strong = if invert { v >= strong } else { v < strong };
+        if is_strong && lab.labels[i] >= 0 {
+            keep[lab.labels[i] as usize] = true;
+        }
+    }
+    lab.labels.iter().map(|&l| (l >= 0 && keep[l as usize]) as u8).collect()
+}
+
+/// Morphological closing (dilate then erode): bridges gaps up to ~2r px.
+pub fn close(mask: &[u8], w: usize, h: usize, r: usize) -> Vec<u8> {
+    if r == 0 {
+        return mask.to_vec();
+    }
+    morph(&morph(mask, w, h, r, true), w, h, r, false)
+}
+
+/// Chamfer (3-4) distance in pixels from every pixel to the nearest seed.
+pub fn distance_to(seed: &[bool], w: usize, h: usize) -> Vec<f32> {
+    const INF: f32 = 1e9;
+    let mut d: Vec<f32> = seed.iter().map(|&s| if s { 0.0 } else { INF }).collect();
+    let (a, b) = (1.0f32, 1.4f32);
+    for y in 0..h {
+        for x in 0..w {
+            let i = y * w + x;
+            let mut v = d[i];
+            if x > 0 { v = v.min(d[i - 1] + a); }
+            if y > 0 {
+                v = v.min(d[i - w] + a);
+                if x > 0 { v = v.min(d[i - w - 1] + b); }
+                if x + 1 < w { v = v.min(d[i - w + 1] + b); }
+            }
+            d[i] = v;
+        }
+    }
+    for y in (0..h).rev() {
+        for x in (0..w).rev() {
+            let i = y * w + x;
+            let mut v = d[i];
+            if x + 1 < w { v = v.min(d[i + 1] + a); }
+            if y + 1 < h {
+                v = v.min(d[i + w] + a);
+                if x + 1 < w { v = v.min(d[i + w + 1] + b); }
+                if x > 0 { v = v.min(d[i + w - 1] + b); }
+            }
+            d[i] = v;
+        }
+    }
+    d
+}

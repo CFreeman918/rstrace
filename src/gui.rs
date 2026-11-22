@@ -6,7 +6,7 @@ use eframe::egui::{self, Color32, Pos2, Rect, Sense, Stroke, TextureHandle, Text
 use rstrace::core::geometry::Pt;
 use rstrace::core::pipeline::rectify_rgba;
 use rstrace::core::trace;
-use rstrace::{FrameGeom, Options, Pipeline, SvgStyle, TraceResult, TRACE_CAPTURE_MM};
+use rstrace::{FrameGeom, LineMode, Options, Pipeline, SvgStyle, TraceResult, TRACE_CAPTURE_MM};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -321,6 +321,24 @@ impl App {
             ui.checkbox(&mut o.flatten, "Even out lighting / shadows");
             ui.checkbox(&mut o.invert, "Light lines on dark background");
             ui.add(egui::Slider::new(&mut o.despeckle_mm2, 0.0..=20.0).text("despeckle mm²"));
+            ui.checkbox(&mut o.catch_faint, "Catch faint lines")
+                .on_hover_text("Keep lighter parts of a line (e.g. the far side of an angled photo) when they connect to darker ink.");
+            ui.add(egui::Slider::new(&mut o.close_gaps_mm, 0.0..=3.0).text("close gaps mm"))
+                .on_hover_text("Bridge small breaks so drawn outlines form closed shapes.");
+
+            ui.add_space(8.0);
+            ui.heading("Lines");
+            egui::ComboBox::from_label("closed outlines")
+                .selected_text(line_mode_name(o.line_mode))
+                .show_ui(ui, |ui| {
+                    for m in [LineMode::Centre, LineMode::Inside, LineMode::Outside, LineMode::Ink] {
+                        ui.selectable_value(&mut o.line_mode, m, line_mode_name(m));
+                    }
+                })
+                .response
+                .on_hover_text("A closed pen outline has two edges. Choose which single path to keep, or 'Both edges' to trace the ink as drawn. Filled shapes and open lines are always traced as drawn.");
+            ui.add(egui::Slider::new(&mut o.max_line_width_mm, 0.5..=6.0).text("max line width mm"))
+                .on_hover_text("Ink thinner than this is treated as a drawn line; thicker ink as a filled shape.");
 
             ui.add_space(8.0);
             ui.heading("Shape");
@@ -521,6 +539,15 @@ impl App {
         let start = rect.right_bottom() + Vec2::new(-ten_mm - 4.0, 12.0);
         painter.line_segment([start, start + Vec2::new(ten_mm, 0.0)], Stroke::new(3.0, ui.visuals().text_color()));
         painter.text(start + Vec2::new(ten_mm / 2.0, -3.0), egui::Align2::CENTER_BOTTOM, "10 mm", egui::FontId::proportional(11.0), ui.visuals().text_color());
+    }
+}
+
+fn line_mode_name(m: LineMode) -> &'static str {
+    match m {
+        LineMode::Centre => "Centre of line",
+        LineMode::Inside => "Inside edge",
+        LineMode::Outside => "Outside edge",
+        LineMode::Ink => "Both edges (ink)",
     }
 }
 

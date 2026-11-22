@@ -11,6 +11,20 @@ use serde::{Deserialize, Serialize};
 /// Shaper Trace capture area (mm), from Shaper's published specs.
 pub const TRACE_CAPTURE_MM: (f64, f64) = (263.0, 173.0);
 
+/// How to turn drawn lines into cut paths.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
+pub enum LineMode {
+    /// Trace the ink itself: a closed pen line becomes two paths (both edges).
+    Ink,
+    /// Closed outlines become one path along the outside of the line.
+    Outside,
+    /// Closed outlines become one path along the middle of the line.
+    Centre,
+    /// Closed outlines become one path along the inside of the line
+    /// (closest to an object you drew around).
+    Inside,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Options {
@@ -25,6 +39,13 @@ pub struct Options {
     pub threshold: f32,
     /// Trace light marks on a dark background.
     pub invert: bool,
+    /// Also keep faint pixels that connect to clearly dark ink.
+    pub catch_faint: bool,
+    /// Bridge gaps in lines up to about this size.
+    pub close_gaps_mm: f64,
+    pub line_mode: LineMode,
+    /// Ink thinner than this counts as a drawn line (for `line_mode`).
+    pub max_line_width_mm: f64,
     /// Remove specks / fill pinholes smaller than this.
     pub despeckle_mm2: f64,
     /// Gaussian smoothing of outlines.
@@ -50,6 +71,10 @@ impl Default for Options {
             auto_threshold: true,
             threshold: 150.0,
             invert: false,
+            catch_faint: true,
+            close_gaps_mm: 0.5,
+            line_mode: LineMode::Centre,
+            max_line_width_mm: 2.5,
             despeckle_mm2: 1.5,
             smoothing_mm: 0.25,
             tolerance_mm: 0.1,
@@ -220,10 +245,149 @@ pub fn make_mask(gray: &Gray, o: &Options) -> (Vec<u8>, f32) {
         }
         t = ip::otsu(vals).clamp(60.0, if o.invert { 230.0 } else { 220.0 });
     }
-    let mut mask = ip::threshold(&img, t, o.invert);
+    let mut mask = if o.catch_faint {
+        ip::hysteresis(&img, t, faint_threshold(&img, t, o.invert), o.invert)
+    } else {
+        ip::threshold(&img, t, o.invert)
+    };
     ip::clear_border(&mut mask, w, h, (o.inset_mm * ppm).round() as usize);
+    let mask = ip::close(&mask, w, h, (o.close_gaps_mm * ppm / 2.0).round() as usize);
     let mask = ip::despeckle(&mask, w, h, (o.despeckle_mm2 * ppm * ppm) as usize);
-    (mask, t)
+    (apply_line_mode(&mask, w, h, o.line_mode, o.max_line_width_mm * ppm), t)
+}
+
+/// Weak threshold for hysteresis: just outside the paper's noise band.
+fn faint_threshold(img: &Gray, t: f32, invert: bool) -> f32 {
+    let stride = ((img.data.len() as f64 / 200_000.0).sqrt().round() as usize).max(1);
+    let mut paper: Vec<f32> = img
+        .data
+        .iter()
+        .step_by(stride)
+        .copied()
+        .filter(|&v| if invert { v < t } else { v >= t })
+        .collect();
+    if paper.len() < 100 {
+        return t;
+    }
+    paper.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let med = paper[paper.len() / 2];
+    let mut dev: Vec<f32> = paper.iter().map(|v| (v - med).abs()).collect();
+    dev.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let sigma = 1.4826 * dev[dev.len() / 2];
+    // Halfway between the main threshold and the paper, but never inside
+    // the paper's noise band.
+    let margin = (5.0 * sigma).max(8.0);
+    if invert {
+        (t - 0.5 * (t - med)).max(med + margin).min(t)
+    } else {
+        (t + 0.5 * (med - t)).min(med - margin).max(t)
+    }
+}
+
+/// Convert closed pen outlines into single filled regions (see LineMode).
+///
+/// Only thin ink loops (estimated stroke width < `max_width_px`) are
+/// converted; filled shapes and open strokes are left as drawn. Regions are
+/// filled by nesting parity, so a washer drawn as two circles keeps its hole.
+pub fn apply_line_mode(mask: &[u8], w: usize, h: usize, mode: LineMode, max_width_px: f64) -> Vec<u8> {
+    if mode == LineMode::Ink {
+        return mask.to_vec();
+    }
+    let ink = ip::label(mask, w, h, 1, true);
+    let bg = ip::label(mask, w, h, 0, false);
+    let (ni, nb) = (ink.areas.len(), bg.areas.len());
+    if ni == 0 {
+        return mask.to_vec();
+    }
+    // Stroke width estimate per ink component: 2 * area / boundary length.
+    let mut boundary = vec![0usize; ni];
+    let mut adj = std::collections::HashSet::new();
+    for y in 0..h {
+        for x in 0..w {
+            let i = y * w + x;
+            if mask[i] != 1 {
+                continue;
+            }
+            let c = ink.labels[i] as usize;
+            let mut edge = false;
+            for (nx, ny) in [(x.wrapping_sub(1), y), (x + 1, y), (x, y.wrapping_sub(1)), (x, y + 1)] {
+                if nx >= w || ny >= h {
+                    edge = true;
+                    continue;
+                }
+                let j = ny * w + nx;
+                if mask[j] == 0 {
+                    edge = true;
+                    adj.insert((c, bg.labels[j] as usize));
+                }
+            }
+            if edge {
+                boundary[c] += 1;
+            }
+        }
+    }
+    let thin: Vec<bool> = (0..ni).map(|c| 2.0 * ink.areas[c] as f64 / boundary[c].max(1) as f64 <= max_width_px).collect();
+    let mut ink_nb: Vec<Vec<usize>> = vec![Vec::new(); ni];
+    let mut bg_nb: Vec<Vec<usize>> = vec![Vec::new(); nb];
+    for &(c, r) in &adj {
+        ink_nb[c].push(r);
+        bg_nb[r].push(c);
+    }
+    // Breadth-first nesting levels: outside background 0, ink touching it 1,
+    // regions enclosed by that ink 2, and so on.
+    let mut bg_level = vec![usize::MAX; nb];
+    let mut ink_level = vec![usize::MAX; ni];
+    let mut queue = std::collections::VecDeque::new();
+    for r in 0..nb {
+        if bg.touches_border[r] {
+            bg_level[r] = 0;
+            queue.push_back((false, r));
+        }
+    }
+    while let Some((is_ink, k)) = queue.pop_front() {
+        if is_ink {
+            for &r in &ink_nb[k] {
+                if bg_level[r] == usize::MAX {
+                    bg_level[r] = ink_level[k] + 1;
+                    queue.push_back((false, r));
+                }
+            }
+        } else {
+            for &c in &bg_nb[k] {
+                if ink_level[c] == usize::MAX {
+                    ink_level[c] = bg_level[k] + 1;
+                    queue.push_back((true, c));
+                }
+            }
+        }
+    }
+    // Fill regions inside an odd number of loops whose enclosing ink is thin.
+    let fill: Vec<bool> = (0..nb)
+        .map(|r| {
+            let l = bg_level[r];
+            l != usize::MAX && l % 4 == 2 && {
+                let enclosing: Vec<usize> = bg_nb[r].iter().copied().filter(|&c| ink_level[c] + 1 == l).collect();
+                !enclosing.is_empty() && enclosing.iter().all(|&c| thin[c])
+            }
+        })
+        .collect();
+    let is_loop: Vec<bool> = (0..ni).map(|c| thin[c] && ink_nb[c].iter().any(|&r| fill[r])).collect();
+    let f_px: Vec<bool> = (0..mask.len()).map(|i| mask[i] == 0 && fill[bg.labels[i] as usize]).collect();
+    let loop_px: Vec<bool> = (0..mask.len()).map(|i| mask[i] == 1 && is_loop[ink.labels[i] as usize]).collect();
+    let other_ink = |i: usize| mask[i] == 1 && !loop_px[i];
+    match mode {
+        LineMode::Ink => unreachable!(),
+        LineMode::Outside => (0..mask.len()).map(|i| (mask[i] == 1 || f_px[i]) as u8).collect(),
+        LineMode::Inside => (0..mask.len()).map(|i| (other_ink(i) || f_px[i]) as u8).collect(),
+        LineMode::Centre => {
+            let not_f: Vec<bool> = (0..mask.len()).map(|i| mask[i] == 0 && !f_px[i]).collect();
+            let d_in = ip::distance_to(&f_px, w, h);
+            let d_out = ip::distance_to(&not_f, w, h);
+            (0..mask.len())
+                .map(|i| (other_ink(i) || f_px[i] || (loop_px[i] && d_in[i] < d_out[i])) as u8)
+                .collect()
+        }
+    }
 }
 
 pub fn trace_mask(mask: &[u8], w: usize, h: usize, o: &Options) -> Vec<Shape> {

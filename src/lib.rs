@@ -3,5 +3,5 @@
 pub mod core;
 pub mod load;
 
-pub use crate::core::pipeline::{FrameGeom, Options, Pipeline, TraceResult, TRACE_CAPTURE_MM};
+pub use crate::core::pipeline::{FrameGeom, LineMode, Options, Pipeline, TraceResult, TRACE_CAPTURE_MM};
 pub use crate::core::svg::SvgStyle;
