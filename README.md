@@ -109,6 +109,7 @@ src/core/pipeline.rs  stage-cached pipeline + shape selection
 src/gui.rs            egui desktop app
 src/main.rs           CLI + GUI entry point
 tests/pipeline.rs     end-to-end test on a synthetic perspective photo
+tests/real_photo.rs   regression test on a real Shaper Trace photo (150 mm ruler)
 ```
 
 rstrace is an independent project and is not affiliated with Shaper Tools.
