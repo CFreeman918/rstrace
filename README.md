@@ -114,13 +114,36 @@ cargo build --release --no-default-features   # CLI only, no GUI
   OpenGL, `libxkbcommon`), which any desktop install already has.
 
 On every push, CI (`.github/workflows/build.yml`) tests the project and builds
-for Linux, Windows and macOS. Download them from the run's *Artifacts*:
+it for Linux, Windows and macOS. Results are attached to each run as
+*Artifacts* (kept for 90 days):
 
-- **Windows:** `rstrace.exe`, with the app icon embedded.
-- **macOS:** `rstrace.app.zip`, an app bundle with its icon. It is unsigned,
-  so after unzipping run `xattr -cr rstrace.app` once, or right-click it and
-  choose *Open*.
-- **Linux:** the `rstrace` binary. Run `./rstrace --install` once (see below).
+- **Linux:** `rstrace-linux-x86_64.tar.gz`. Extract it, then run
+  `./rstrace --install` once (see above).
+- **Windows:** `rstrace-windows-x86_64.zip`, containing `rstrace.exe` with the
+  app icon embedded.
+- **macOS:** `rstrace-macos-arm64.zip`, containing `rstrace.app` with its icon.
+  It is unsigned, so after unzipping run `xattr -cr rstrace.app` once, or
+  right-click it and choose *Open*.
+
+### Making a release
+
+Pushing a version tag publishes the same three downloads permanently on the
+repository's **Releases** page, with notes listing the changes since the last
+release:
+
+1. Bump `version` in `Cargo.toml` (e.g. `0.2.0`), run `cargo build` so
+   `Cargo.lock` picks it up, then commit and merge to `main`.
+2. Tag that commit and push the tag:
+   ```sh
+   git checkout main && git pull
+   git tag v0.2.0
+   git push origin v0.2.0
+   ```
+
+The release is only published if all three platforms build and pass their
+tests, and the tag matches the `Cargo.toml` version. Follow progress on the
+**Actions** tab. If a release fails, fix the problem, then delete and re-push
+the tag: `git push origin :v0.2.0`, `git tag -f v0.2.0`, `git push origin v0.2.0`.
 
 The icon is drawn by `tools/make_icon.py` (Pillow), which writes
 `assets/icon*.png` and `assets/icon.ico`.
