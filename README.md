@@ -5,6 +5,9 @@ photo of a drawing inside a Shaper Trace frame (or any dark frame with a known
 opening size) into a **real-scale SVG**. It is a single native executable with
 no network access, no account and no runtime dependencies.
 
+![load image](/screenshots/load_image.png)
+![trace image](/screenshots/trace_image.png)
+
 ## How it works
 
 1. **Find the frame.** The paper inside the frame is a bright region fully
